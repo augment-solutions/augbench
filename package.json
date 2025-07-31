@@ -1,0 +1,56 @@
+{
+  "name": "backbencher",
+  "version": "1.0.0",
+  "description": "A cross-platform Node.js CLI benchmarking tool for comparing performance metrics across different AI coding assistants",
+  "main": "src/index.js",
+  "bin": {
+    "backbencher": "./bin/backbencher.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "mocha test/**/*.test.js",
+    "test:watch": "jest --watch",
+    "lint": "eslint src/**/*.js",
+    "lint:fix": "eslint src/**/*.js --fix"
+  },
+  "keywords": [
+    "cli",
+    "benchmark",
+    "ai",
+    "coding-assistant",
+    "performance",
+    "cross-platform"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "inquirer": "^9.2.12",
+    "chalk": "^4.1.2",
+    "ora": "^7.0.1",
+    "dotenv": "^16.3.1",
+    "commander": "^11.1.0",
+    "fs-extra": "^11.1.1",
+    "joi": "^17.11.0",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "mocha": "^10.2.0",
+    "chai": "^4.3.10",
+    "eslint": "^8.54.0",
+    "eslint-config-standard": "^17.1.0",
+    "eslint-plugin-import": "^2.29.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^6.1.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/backbencher.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/backbencher/issues"
+  },
+  "homepage": "https://github.com/yourusername/backbencher#readme"
+}

@@ -1,0 +1,18 @@
+{
+  "num_prompts": 3,
+  "prompts": [
+    "prompt1.md",
+    "prompt2.md",
+    "prompt3.md"
+  ],
+  "assistants": [
+    "Claude Code",
+    "Augment CLI"
+  ],
+  "runs_per_prompt": 2,
+  "output_filename": "results.json",
+  "metrics": [
+    "response_time",
+    "output_quality"
+  ]
+}

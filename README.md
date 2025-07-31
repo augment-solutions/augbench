@@ -1,0 +1,766 @@
+# Backbencher
+
+A cross-platform Node.js CLI benchmarking tool for comparing performance metrics across different AI coding assistants.
+
+## Overview
+
+Backbencher is designed to provide objective, reproducible benchmarks for AI coding assistants like Claude Code, Augment CLI, and others. It measures various performance metrics including response time, output quality, and custom metrics across multiple test scenarios.
+
+### Key Features
+
+- **Cross-Platform**: Works seamlessly on macOS, Linux, and Windows
+- **Extensible Architecture**: Easy to add new AI assistants, metrics, and evaluators
+- **Comprehensive Metrics**: Response time, output quality, and custom metrics
+- **Interactive CLI**: User-friendly prompts and progress indicators
+- **Robust Error Handling**: Graceful failure recovery and detailed error reporting
+- **Flexible Configuration**: JSON-based settings with validation
+- **Results Storage**: Structured JSON output with metadata and platform information
+
+### Workflow
+
+Backbencher follows an 8-step workflow:
+1. Repository selection and validation
+2. Environment configuration checking
+3. Settings management and validation
+4. User confirmation
+5. Benchmark execution with progress tracking
+6. Results collection and storage
+7. Completion notification
+8. Error handling and recovery
+
+## Components
+
+### Core Architecture
+
+- **CLI Interface** (`src/cli/`): Interactive command-line interface with progress indicators
+- **Adapters** (`src/adapters/`): Pluggable adapters for different AI coding assistants
+- **Metrics** (`src/metrics/`): Extensible metric system for measuring performance
+- **Configuration** (`src/config/`): JSON-based configuration with validation
+- **Utilities** (`src/utils/`): Cross-platform utilities and error handling
+
+### Key Classes
+
+- **BenchmarkCLI**: Main orchestrator for the benchmarking workflow
+- **BaseAdapter**: Abstract base class for AI assistant adapters
+- **BaseMetric**: Abstract base class for metrics (MeasurableMetric, AssessableMetric)
+- **ErrorHandler**: Comprehensive error handling and categorization
+- **Platform**: Cross-platform compatibility utilities
+- **ResultsStorage**: Results management and export
+
+### Project Structure
+
+```
+backbencher/
+├── bin/backbencher.js          # Executable entry point
+├── src/
+│   ├── adapters/              # AI assistant adapters
+│   │   ├── BaseAdapter.js
+│   │   ├── ClaudeCodeAdapter.js
+│   │   ├── AugmentCLIAdapter.js
+│   │   └── AdapterFactory.js
+│   ├── cli/                   # CLI interface and workflow
+│   │   ├── BenchmarkCLI.js
+│   │   ├── RepositorySelector.js
+│   │   └── BenchmarkRunner.js
+│   ├── config/                # Configuration management
+│   │   ├── EnvironmentConfig.js
+│   │   └── SettingsManager.js
+│   ├── metrics/               # Metric implementations
+│   │   ├── BaseMetric.js
+│   │   ├── MeasurableMetric.js
+│   │   ├── AssessableMetric.js
+│   │   ├── ResponseTimeMetric.js
+│   │   ├── OutputQualityMetric.js
+│   │   └── MetricsFactory.js
+│   └── utils/                 # Utility modules
+│       ├── Logger.js
+│       ├── FileSystem.js
+│       ├── ErrorHandler.js
+│       ├── Validator.js
+│       ├── Platform.js
+│       └── ResultsStorage.js
+├── test/basic.test.js         # Unit tests
+├── prompt1.md                 # Example prompt files
+├── prompt2.md
+├── prompt3.md
+├── package.json
+└── README.md
+```
+
+## Installation
+
+### Prerequisites
+- Node.js 16+ 
+- npm or yarn
+- AI assistants you want to benchmark (Claude Code, Augment CLI, etc.)
+
+### Global Installation
+```bash
+npm install -g backbencher
+```
+
+### Local Development
+```bash
+git clone <repository-url>
+cd backbencher
+npm install
+npm link
+```
+
+## Usage
+
+### Quick Start
+
+1. **Initialize configuration files:**
+```bash
+backbencher init
+```
+
+2. **Configure environment variables:**
+Edit `.env` file with your LLM endpoint and API key:
+```env
+LLM_OPENAI_ENDPOINT=https://api.openai.com/v1
+LLM_API_KEY=your-api-key-here
+```
+
+3. **Customize settings:**
+Edit `settings.json` to configure prompts, assistants, and metrics:
+```json
+{
+  "num_prompts": 3,
+  "prompts": ["prompt1.md", "prompt2.md", "prompt3.md"],
+  "assistants": ["Claude Code", "Augment CLI"],
+  "runs_per_prompt": 2,
+  "output_filename": "results.json",
+  "metrics": ["response_time", "output_quality"]
+}
+```
+
+4. **Run benchmarks:**
+```bash
+backbencher benchmark
+```
+
+### Commands
+
+#### `backbencher init`
+Initialize configuration files (`.env` and `settings.json`) in the current directory.
+
+**Options:**
+- `--force`: Overwrite existing configuration files
+
+#### `backbencher benchmark`
+Run benchmark tests on AI coding assistants.
+
+**Options:**
+- `--repository <path>`: Path to repository for context (default: current directory)
+- `--settings <path>`: Path to settings file (default: ./settings.json)
+- `--output <path>`: Output directory for results
+
+#### `backbencher validate`
+Validate configuration and settings files.
+
+**Options:**
+- `--settings <path>`: Path to settings file to validate
+
+#### Global Options
+- `-v, --verbose`: Enable verbose logging
+- `-q, --quiet`: Suppress non-essential output
+- `--config <path>`: Path to configuration file
+- `--output <path>`: Output directory for results
+
+### Configuration
+
+#### Environment Variables (.env)
+
+```env
+# Required: LLM endpoint URL
+LLM_OPENAI_ENDPOINT=https://api.openai.com/v1
+
+# Required: API key for the LLM service
+LLM_API_KEY=your-api-key-here
+
+# Optional: Debug mode
+DEBUG=false
+
+# Optional: Request timeout in milliseconds
+TIMEOUT=30000
+```
+
+#### Settings (settings.json)
+
+```json
+{
+  "num_prompts": 3,
+  "prompts": [
+    "prompt1.md",
+    "prompt2.md", 
+    "prompt3.md"
+  ],
+  "assistants": [
+    "Claude Code",
+    "Augment CLI"
+  ],
+  "runs_per_prompt": 2,
+  "output_filename": "results.json",
+  "metrics": [
+    "response_time",
+    "output_quality"
+  ]
+}
+```
+
+### Results Format
+
+Results are saved in JSON format with the following structure:
+
+```json
+{
+  "metadata": {
+    "timestamp": "2024-01-01T00:00:00.000Z",
+    "version": "1.0.0",
+    "totalRuns": 12,
+    "platform": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "nodeVersion": "v18.0.0"
+    }
+  },
+  "results": [
+    {
+      "prompt": "prompt1.md",
+      "assistant": "Claude Code",
+      "runs": [
+        {
+          "run_id": 1,
+          "response_time": 2.45,
+          "output_quality": 8.5,
+          "error": null
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Extensions
+
+Backbencher is designed with extensibility in mind. You can easily add new evaluator LLMs, tests, agents, and metrics to enhance the benchmarking capabilities.
+
+### Adding a New Evaluator LLM
+
+To add a new LLM for evaluating output quality (used by AssessableMetric):
+
+1. **Update Environment Configuration** (`src/config/EnvironmentConfig.js`):
+
+```javascript
+// Add new LLM endpoint configuration
+const requiredVars = [
+  'LLM_OPENAI_ENDPOINT',
+  'LLM_API_KEY',
+  'LLM_ANTHROPIC_ENDPOINT',  // New LLM endpoint
+  'LLM_ANTHROPIC_API_KEY'    // New LLM API key
+];
+```
+
+2. **Create LLM Client** (`src/utils/LLMClient.js`):
+
+```javascript
+class LLMClient {
+  constructor(provider = 'openai') {
+    this.provider = provider;
+    this.setupClient();
+  }
+
+  setupClient() {
+    switch (this.provider) {
+      case 'openai':
+        this.endpoint = process.env.LLM_OPENAI_ENDPOINT;
+        this.apiKey = process.env.LLM_API_KEY;
+        break;
+      case 'anthropic':
+        this.endpoint = process.env.LLM_ANTHROPIC_ENDPOINT;
+        this.apiKey = process.env.LLM_ANTHROPIC_API_KEY;
+        break;
+      default:
+        throw new Error(`Unsupported LLM provider: ${this.provider}`);
+    }
+  }
+
+  async evaluate(prompt, response) {
+    // Implementation for different LLM providers
+    const payload = this.buildPayload(prompt, response);
+    return await this.makeRequest(payload);
+  }
+}
+```
+
+3. **Update AssessableMetric** (`src/metrics/AssessableMetric.js`):
+
+```javascript
+constructor(name, description, llmProvider = 'openai') {
+  super(name, description);
+  this.llmClient = new LLMClient(llmProvider);
+}
+```
+
+### Adding a New Test/Prompt
+
+To add new test scenarios:
+
+1. **Create Prompt File**:
+```bash
+# Create a new prompt file
+touch prompt4.md
+```
+
+2. **Write Test Content** (`prompt4.md`):
+```markdown
+# Database Optimization Task
+
+You are working on a Node.js application with performance issues. The database queries are slow and need optimization.
+
+## Context
+- Using PostgreSQL database
+- Express.js REST API
+- High traffic application (1000+ requests/minute)
+
+## Task
+Optimize the following database query and explain your approach:
+
+```sql
+SELECT * FROM users u
+JOIN orders o ON u.id = o.user_id
+WHERE u.created_at > '2023-01-01'
+ORDER BY o.created_at DESC;
+```
+
+## Requirements
+- Improve query performance
+- Maintain data integrity
+- Explain indexing strategy
+- Provide monitoring recommendations
+```
+
+3. **Update Settings** (`settings.json`):
+```json
+{
+  "num_prompts": 4,
+  "prompts": [
+    "prompt1.md",
+    "prompt2.md",
+    "prompt3.md",
+    "prompt4.md"
+  ],
+  "assistants": ["Claude Code", "Augment CLI"],
+  "runs_per_prompt": 2,
+  "output_filename": "results.json",
+  "metrics": ["response_time", "output_quality"]
+}
+```
+
+### Adding a New AI Agent/Assistant
+
+To add support for a new AI coding assistant:
+
+1. **Create Adapter Class** (`src/adapters/NewAssistantAdapter.js`):
+
+```javascript
+const BaseAdapter = require('./BaseAdapter');
+
+class NewAssistantAdapter extends BaseAdapter {
+  constructor() {
+    super('New Assistant', 'new-assistant');
+  }
+
+  async isAvailable() {
+    try {
+      // Check if the assistant command is available
+      const result = await this.platform.spawnProcess('new-assistant', ['--version'], {
+        timeout: 5000
+      });
+      return result.code === 0;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async getVersion() {
+    try {
+      const result = await this.platform.spawnProcess('new-assistant', ['--version'], {
+        timeout: 5000
+      });
+      return result.stdout.trim();
+    } catch (error) {
+      return 'unknown';
+    }
+  }
+
+  async execute(promptPath, repositoryPath, options = {}) {
+    const startTime = Date.now();
+
+    try {
+      // Read the prompt
+      const prompt = await this.readPrompt(promptPath);
+
+      // Validate repository
+      await this.validateRepository(repositoryPath);
+
+      // Execute the assistant with retry logic
+      const result = await this.executeWithRetry(async () => {
+        return await this.platform.spawnProcess('new-assistant', [
+          'analyze',
+          '--prompt', promptPath,
+          '--repository', repositoryPath,
+          '--format', 'text'
+        ], {
+          timeout: options.timeout || 60000,
+          cwd: repositoryPath
+        });
+      }, options.retries || 3);
+
+      const endTime = Date.now();
+      const responseTime = (endTime - startTime) / 1000;
+
+      return {
+        success: true,
+        output: result.stdout,
+        responseTime,
+        error: null,
+        metadata: {
+          version: await this.getVersion(),
+          exitCode: result.code
+        }
+      };
+    } catch (error) {
+      const endTime = Date.now();
+      const responseTime = (endTime - startTime) / 1000;
+
+      return {
+        success: false,
+        output: '',
+        responseTime,
+        error: error.message,
+        metadata: {
+          version: await this.getVersion(),
+          errorType: error.constructor.name
+        }
+      };
+    }
+  }
+}
+
+module.exports = NewAssistantAdapter;
+```
+
+2. **Register in AdapterFactory** (`src/adapters/AdapterFactory.js`):
+
+```javascript
+const NewAssistantAdapter = require('./NewAssistantAdapter');
+
+class AdapterFactory {
+  constructor() {
+    this.adapters = new Map([
+      ['Claude Code', ClaudeCodeAdapter],
+      ['Augment CLI', AugmentCLIAdapter],
+      ['New Assistant', NewAssistantAdapter]  // Add new adapter
+    ]);
+  }
+
+  // ... rest of the factory implementation
+}
+```
+
+3. **Update Settings Validation** (`src/config/SettingsManager.js`):
+
+```javascript
+const validAssistants = [
+  'Claude Code',
+  'Augment CLI',
+  'New Assistant'  // Add to valid assistants list
+];
+```
+
+4. **Add to Configuration** (`settings.json`):
+```json
+{
+  "assistants": ["Claude Code", "Augment CLI", "New Assistant"]
+}
+```
+
+### Adding a New Metric
+
+Backbencher supports two types of metrics: **MeasurableMetric** (directly measured) and **AssessableMetric** (LLM-evaluated).
+
+#### Adding a MeasurableMetric
+
+For metrics that can be directly measured (e.g., memory usage, token count):
+
+1. **Create Metric Class** (`src/metrics/MemoryUsageMetric.js`):
+
+```javascript
+const MeasurableMetric = require('./MeasurableMetric');
+
+class MemoryUsageMetric extends MeasurableMetric {
+  constructor() {
+    super('memory_usage', 'Peak memory usage during execution (MB)');
+  }
+
+  async measure(result, prompt, assistant) {
+    // Extract memory usage from result metadata or system monitoring
+    if (result.metadata && result.metadata.memoryUsage) {
+      return {
+        value: result.metadata.memoryUsage,
+        unit: 'MB',
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    // Fallback: estimate based on output size or other factors
+    const estimatedMemory = this.estimateMemoryUsage(result.output);
+    return {
+      value: estimatedMemory,
+      unit: 'MB',
+      timestamp: new Date().toISOString(),
+      estimated: true
+    };
+  }
+
+  estimateMemoryUsage(output) {
+    // Simple estimation based on output length
+    const baseMemory = 50; // Base memory usage in MB
+    const outputSizeMemory = (output.length / 1000) * 0.1; // ~0.1MB per 1000 chars
+    return Math.round((baseMemory + outputSizeMemory) * 100) / 100;
+  }
+}
+
+module.exports = MemoryUsageMetric;
+```
+
+#### Adding an AssessableMetric
+
+For metrics that require LLM evaluation (e.g., code quality, security):
+
+1. **Create Metric Class** (`src/metrics/CodeSecurityMetric.js`):
+
+```javascript
+const AssessableMetric = require('./AssessableMetric');
+
+class CodeSecurityMetric extends AssessableMetric {
+  constructor() {
+    super('code_security', 'Security assessment of generated code (1-10 scale)');
+  }
+
+  buildAssessmentPrompt(originalPrompt, assistantResponse) {
+    return `
+You are a cybersecurity expert reviewing code for security vulnerabilities.
+
+Original Task:
+${originalPrompt}
+
+Assistant's Response:
+${assistantResponse}
+
+Please evaluate the security of the code/solution provided by the assistant on a scale of 1-10:
+
+1-3: Critical security issues (SQL injection, XSS, hardcoded secrets, etc.)
+4-6: Moderate security concerns (insufficient validation, weak encryption, etc.)
+7-8: Good security practices with minor improvements needed
+9-10: Excellent security implementation following best practices
+
+Consider:
+- Input validation and sanitization
+- Authentication and authorization
+- Data encryption and protection
+- Error handling and information disclosure
+- Dependency security
+- Code injection vulnerabilities
+
+Respond with only a number from 1 to 10, followed by a brief explanation.
+
+Example: "7 - Good security practices but missing input validation on user data."
+`;
+  }
+
+  parseAssessmentResponse(response) {
+    // Extract numeric score from LLM response
+    const match = response.match(/^(\d+(?:\.\d+)?)/);
+    if (match) {
+      const score = parseFloat(match[1]);
+      return Math.min(Math.max(score, 1), 10); // Clamp between 1-10
+    }
+
+    // Fallback: try to find number in response
+    const numbers = response.match(/\b(\d+(?:\.\d+)?)\b/g);
+    if (numbers && numbers.length > 0) {
+      const score = parseFloat(numbers[0]);
+      return Math.min(Math.max(score, 1), 10);
+    }
+
+    throw new Error(`Could not parse assessment score from response: ${response}`);
+  }
+}
+
+module.exports = CodeSecurityMetric;
+```
+
+2. **Register in MetricsFactory** (`src/metrics/MetricsFactory.js`):
+
+```javascript
+const MemoryUsageMetric = require('./MemoryUsageMetric');
+const CodeSecurityMetric = require('./CodeSecurityMetric');
+
+class MetricsFactory {
+  constructor() {
+    this.metrics = new Map([
+      ['response_time', ResponseTimeMetric],
+      ['output_quality', OutputQualityMetric],
+      ['memory_usage', MemoryUsageMetric],      // Add new measurable metric
+      ['code_security', CodeSecurityMetric]     // Add new assessable metric
+    ]);
+  }
+
+  // ... rest of the factory implementation
+}
+```
+
+3. **Update Settings Validation** (`src/config/SettingsManager.js`):
+
+```javascript
+const validMetrics = [
+  'response_time',
+  'output_quality',
+  'memory_usage',
+  'code_security'
+];
+```
+
+4. **Add to Configuration** (`settings.json`):
+```json
+{
+  "metrics": [
+    "response_time",
+    "output_quality",
+    "memory_usage",
+    "code_security"
+  ]
+}
+```
+
+### Best Practices for Extensions
+
+1. **Error Handling**: Always implement comprehensive error handling in your extensions
+2. **Validation**: Validate inputs and configurations thoroughly
+3. **Documentation**: Document your extensions with clear examples
+4. **Testing**: Write unit tests for new components
+5. **Logging**: Use the built-in Logger for consistent output
+6. **Platform Compatibility**: Ensure cross-platform compatibility using Platform utilities
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run tests with coverage
+npm run test:coverage
+
+# Run tests in watch mode
+npm run test:watch
+```
+
+### Linting
+
+```bash
+# Check code style
+npm run lint
+
+# Fix linting issues automatically
+npm run lint:fix
+```
+
+### Debugging
+
+Enable debug mode for detailed logging:
+
+```bash
+# Set debug environment variable
+DEBUG=true backbencher benchmark --verbose
+
+# Or in .env file
+DEBUG=true
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **"Command not found" errors**
+   - Ensure AI assistants are installed and in PATH
+   - Check adapter configuration and command names
+   - Verify executable permissions
+
+2. **API key errors**
+   - Verify LLM_API_KEY is set correctly in .env
+   - Check API key permissions and quotas
+   - Ensure endpoint URL is correct
+
+3. **File permission errors**
+   - Ensure write permissions for output directory
+   - Check file paths are accessible
+   - Verify prompt files exist and are readable
+
+4. **Network timeouts**
+   - Increase timeout values in configuration
+   - Check network connectivity
+   - Verify LLM endpoint accessibility
+
+5. **Memory issues**
+   - Reduce number of concurrent runs
+   - Increase system memory limits
+   - Monitor system resources during benchmarks
+
+### Debug Mode
+
+Enable verbose logging for detailed troubleshooting:
+
+```bash
+backbencher benchmark --verbose
+```
+
+### Getting Help
+
+- Check the [Issues](https://github.com/your-repo/backbencher/issues) page
+- Review the [Documentation](https://github.com/your-repo/backbencher/wiki)
+- Join our [Discord Community](https://discord.gg/backbencher)
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Setup
+
+1. Fork the repository
+2. Clone your fork: `git clone https://github.com/your-username/backbencher.git`
+3. Install dependencies: `npm install`
+4. Create a feature branch: `git checkout -b feature/your-feature`
+5. Make your changes and add tests
+6. Run tests: `npm test`
+7. Submit a pull request
+
+### Code Style
+
+- Follow ESLint configuration
+- Use meaningful variable and function names
+- Add JSDoc comments for public APIs
+- Write comprehensive tests for new features
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and updates.

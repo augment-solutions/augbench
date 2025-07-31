@@ -1,0 +1,241 @@
+/**
+ * Settings management for benchmark configuration
+ */
+
+const inquirer = require('inquirer');
+const path = require('path');
+const Joi = require('joi');
+const { Logger } = require('../utils/Logger');
+const { FileSystem } = require('../utils/FileSystem');
+
+class SettingsManager {
+  constructor(options = {}) {
+    this.options = options;
+    this.logger = new Logger(options);
+    this.fs = new FileSystem(options);
+    this.settingsPath = path.join(process.cwd(), 'settings.json');
+    this.schema = this.createValidationSchema();
+  }
+
+  /**
+   * Ensure settings.json exists and is configured
+   */
+  async ensureSettings() {
+    this.logger.info('Checking settings configuration...');
+    
+    if (!(await this.fs.exists(this.settingsPath))) {
+      this.logger.warn('settings.json not found');
+      await this.createSettingsInteractively();
+    } else {
+      this.logger.info('settings.json found');
+      await this.confirmSettingsUpdate();
+    }
+  }
+
+  /**
+   * Create settings.json interactively
+   */
+  async createSettingsInteractively() {
+    const { createNow } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'createNow',
+        message: 'Would you like to create a settings.json file now?',
+        default: true
+      }
+    ]);
+
+    if (createNow) {
+      await this.createTemplateSettings();
+      this.logger.info('Please edit settings.json with your specific configuration');
+      
+      const { proceed } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'proceed',
+          message: 'Have you updated the settings.json file?',
+          default: false
+        }
+      ]);
+
+      if (!proceed) {
+        throw new Error('Settings configuration incomplete. Please update settings.json and try again.');
+      }
+    } else {
+      throw new Error('settings.json is required to run benchmarks');
+    }
+  }
+
+  /**
+   * Ask user to confirm if settings have been updated
+   */
+  async confirmSettingsUpdate() {
+    const { updated } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'updated',
+        message: 'Have you updated the benchmark settings in settings.json?',
+        default: true
+      }
+    ]);
+
+    if (!updated) {
+      this.logger.info('Please review and update settings.json before proceeding');
+    }
+  }
+
+  /**
+   * Validate settings.json against schema
+   */
+  async validateSettings() {
+    this.logger.info('Validating settings configuration...');
+    
+    if (!(await this.fs.exists(this.settingsPath))) {
+      throw new Error('settings.json file not found');
+    }
+
+    // Read and parse settings
+    const settings = await this.fs.readJSON(this.settingsPath);
+    
+    // Validate against schema
+    const { error, value } = this.schema.validate(settings);
+    if (error) {
+      throw new Error(`Settings validation failed: ${error.details[0].message}`);
+    }
+
+    // Additional validations
+    await this.validatePromptFiles(value.prompts);
+    await this.validateAssistants(value.assistants);
+
+    this.logger.success('Settings validation passed');
+    return value;
+  }
+
+  /**
+   * Validate that prompt files exist and are readable
+   */
+  async validatePromptFiles(prompts) {
+    for (const promptFile of prompts) {
+      const promptPath = this.fs.getAbsolutePath(promptFile);
+      
+      if (!(await this.fs.exists(promptPath))) {
+        throw new Error(`Prompt file not found: ${promptFile}`);
+      }
+
+      const stats = await this.fs.getStats(promptPath);
+      if (!stats.isFile()) {
+        throw new Error(`Prompt path is not a file: ${promptFile}`);
+      }
+
+      // Try to read the file to ensure it's readable
+      try {
+        await this.fs.readText(promptPath);
+      } catch (error) {
+        throw new Error(`Cannot read prompt file ${promptFile}: ${error.message}`);
+      }
+    }
+
+    this.logger.debug(`Validated ${prompts.length} prompt files`);
+  }
+
+  /**
+   * Validate that assistants are supported
+   */
+  async validateAssistants(assistants) {
+    const supportedAssistants = ['Claude Code', 'Augment CLI']; // This will be expanded
+    
+    for (const assistant of assistants) {
+      if (!supportedAssistants.includes(assistant)) {
+        throw new Error(`Unsupported assistant: ${assistant}. Supported: ${supportedAssistants.join(', ')}`);
+      }
+    }
+
+    this.logger.debug(`Validated ${assistants.length} assistants`);
+  }
+
+  /**
+   * Create template settings.json file
+   */
+  async createTemplateSettings(force = false) {
+    if (!force && await this.fs.exists(this.settingsPath)) {
+      this.logger.info('settings.json already exists');
+      return;
+    }
+
+    const template = {
+      num_prompts: 3,
+      prompts: [
+        "prompt1.md",
+        "prompt2.md", 
+        "prompt3.md"
+      ],
+      assistants: [
+        "Claude Code",
+        "Augment CLI"
+      ],
+      runs_per_prompt: 2,
+      output_filename: "results.json",
+      metrics: [
+        "response_time",
+        "output_quality"
+      ]
+    };
+
+    await this.fs.writeJSON(this.settingsPath, template);
+    this.logger.success(`Created template settings.json: ${this.settingsPath}`);
+  }
+
+  /**
+   * Create Joi validation schema for settings
+   */
+  createValidationSchema() {
+    return Joi.object({
+      num_prompts: Joi.number().integer().min(1).required()
+        .description('Number of prompts to use'),
+      
+      prompts: Joi.array().items(Joi.string().min(1)).min(1).required()
+        .description('Array of prompt file paths'),
+      
+      assistants: Joi.array().items(Joi.string().min(1)).min(1).required()
+        .description('Array of assistant names'),
+      
+      runs_per_prompt: Joi.number().integer().min(1).required()
+        .description('Number of runs per prompt-assistant combination'),
+      
+      output_filename: Joi.string().min(1).required()
+        .description('Output filename for results'),
+      
+      metrics: Joi.array().items(Joi.string().min(1)).min(1).required()
+        .description('Array of metric names to measure')
+    }).custom((value, helpers) => {
+      // Validate that num_prompts matches prompts array length
+      if (value.num_prompts !== value.prompts.length) {
+        return helpers.error('custom.promptsLength');
+      }
+      return value;
+    }).messages({
+      'custom.promptsLength': 'num_prompts must match the length of prompts array'
+    });
+  }
+
+  /**
+   * Display current settings
+   */
+  async displaySettings() {
+    if (!(await this.fs.exists(this.settingsPath))) {
+      this.logger.warn('settings.json not found');
+      return;
+    }
+
+    const settings = await this.fs.readJSON(this.settingsPath);
+    
+    this.logger.info('Current settings:');
+    this.logger.info(`- Prompts: ${settings.prompts?.join(', ') || 'None'}`);
+    this.logger.info(`- Assistants: ${settings.assistants?.join(', ') || 'None'}`);
+    this.logger.info(`- Runs per prompt: ${settings.runs_per_prompt || 'Not set'}`);
+    this.logger.info(`- Output file: ${settings.output_filename || 'Not set'}`);
+    this.logger.info(`- Metrics: ${settings.metrics?.join(', ') || 'None'}`);
+  }
+}
+
+module.exports = { SettingsManager };
