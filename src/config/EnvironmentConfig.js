@@ -5,6 +5,7 @@
 const inquirer = require('inquirer');
 const dotenv = require('dotenv');
 const path = require('path');
+const axios = require('axios');
 const { Logger } = require('../utils/Logger');
 const { FileSystem } = require('../utils/FileSystem');
 
@@ -14,7 +15,9 @@ class EnvironmentConfig {
     this.logger = new Logger(options);
     this.fs = new FileSystem(options);
     this.envPath = path.join(process.cwd(), '.env');
-    this.requiredVars = ['LLM_OPENAI_ENDPOINT', 'LLM_API_KEY'];
+    this.requiredVars = ['LLM_OPENAI_ENDPOINT', 'LLM_API_KEY']; // core required
+    // Optional but recommended for non-OpenAI providers:
+    this.optionalVars = ['LLM_MODEL', 'LLM_PROVIDER', 'LLM_ANTHROPIC_VERSION'];
   }
 
   /**
@@ -130,8 +133,11 @@ class EnvironmentConfig {
    * Validate environment configuration
    */
   async validate() {
+    // Ensure .env is loaded even when running `backbencher validate`
+    await this.loadEnvFile();
+
     const missingVars = this.getMissingVariables();
-    
+
     if (missingVars.length > 0) {
       throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
     }
@@ -144,11 +150,80 @@ class EnvironmentConfig {
 
     // Validate API key format (basic check)
     const apiKey = process.env.LLM_API_KEY;
-    if (apiKey.length < 10) {
+    if (!apiKey || apiKey.length < 10) {
       throw new Error('LLM_API_KEY appears to be too short');
     }
 
+    // Provider-aware connectivity test
+    await this.testLlmConnectivity();
+
     this.logger.debug('Environment validation passed');
+  }
+
+  /**
+   * Test LLM connectivity with minimal/zero-cost calls where possible
+   */
+  async testLlmConnectivity() {
+    const endpoint = process.env.LLM_OPENAI_ENDPOINT;
+    const apiKey = process.env.LLM_API_KEY;
+    const provider = (process.env.LLM_PROVIDER || 'openai-compatible').toLowerCase();
+    const model = process.env.LLM_MODEL;
+
+    const timeout = 10000; // 10s connectivity timeout
+
+    this.logger.info('Testing LLM connectivity...');
+
+    try {
+      if (provider === 'anthropic') {
+        if (!model || model.trim() === '') {
+          throw new Error('LLM_MODEL is required when LLM_PROVIDER=anthropic');
+        }
+        // Minimal Anthropic Messages call (may incur negligible cost)
+        const res = await axios.post(
+          `${endpoint}/messages`,
+          {
+            model,
+            max_tokens: 1,
+            temperature: 0,
+            messages: [
+              {
+                role: 'user',
+                content: [{ type: 'text', text: 'Respond with OK' }]
+              }
+            ]
+          },
+          {
+            headers: {
+              'x-api-key': apiKey,
+              'anthropic-version': process.env.LLM_ANTHROPIC_VERSION || '2023-06-01',
+              'Content-Type': 'application/json'
+            },
+            timeout
+          }
+        );
+        if (!res.data || !Array.isArray(res.data.content)) {
+          throw new Error('Anthropic connectivity failed: unexpected response');
+        }
+        this.logger.success('Anthropic connectivity OK');
+      } else {
+        // OpenAI-compatible: prefer GET /models (usually free)
+        const res = await axios.get(`${endpoint}/models`, {
+          headers: {
+            Authorization: `Bearer ${apiKey}`
+          },
+          timeout
+        });
+        if (!res.data) {
+          throw new Error('OpenAI-compatible connectivity failed: empty response');
+        }
+        this.logger.success('OpenAI-compatible connectivity OK');
+      }
+    } catch (err) {
+      const hint = provider === 'anthropic'
+        ? 'Check LLM_OPENAI_ENDPOINT=https://api.anthropic.com/v1, LLM_API_KEY, LLM_MODEL, and LLM_ANTHROPIC_VERSION.'
+        : 'Check LLM_OPENAI_ENDPOINT (e.g., https://openrouter.ai/api/v1), LLM_API_KEY, and permissions.';
+      throw new Error(`LLM connectivity test failed (${provider}): ${err.message}. ${hint}`);
+    }
   }
 
   /**
@@ -173,11 +248,26 @@ class EnvironmentConfig {
     }
 
     const template = `# Backbencher Environment Configuration
-# LLM endpoint URL (e.g., https://api.openai.com/v1)
+# LLM endpoint URL
+# - OpenAI-compatible gateway (e.g., https://openrouter.ai/api/v1 or your litellm server)
+# - Or Anthropic native (https://api.anthropic.com/v1) when using LLM_PROVIDER=anthropic
 LLM_OPENAI_ENDPOINT=
 
-# API key for the LLM service
+# API key for the LLM service (Gateway key or Anthropic key)
 LLM_API_KEY=
+
+# Optional: Select model id (e.g., anthropic/claude-3.5-sonnet-20241022)
+# If not set, defaults to gpt-3.5-turbo
+LLM_MODEL=
+
+# Optional: Provider hint
+# - openai-compatible (default): uses /chat/completions
+# - anthropic: uses /messages with x-api-key & anthropic-version
+LLM_PROVIDER=
+
+# Optional: Anthropic API version (only when LLM_PROVIDER=anthropic)
+# Default: 2023-06-01 (update to current if needed)
+LLM_ANTHROPIC_VERSION=2023-06-01
 
 # Optional: Additional configuration
 # DEBUG=false

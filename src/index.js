@@ -30,7 +30,7 @@ async function main() {
     program
       .command('benchmark')
       .description('Run benchmark tests on AI coding assistants')
-      .option('-r, --repository <path>', 'Git repository path for context')
+      .option('-r, --repository <path>', 'Local repository path for context (defaults to current directory)')
       .option('-s, --settings <path>', 'Path to settings.json file')
       .option('--dry-run', 'Validate configuration without running benchmarks')
       .action(async (options) => {
@@ -63,8 +63,9 @@ async function main() {
     // Add validate command
     program
       .command('validate')
-      .description('Validate configuration and settings')
+      .description('Validate env, settings, LLM connectivity, and CLI assistant availability. If --repository is provided, validate that path; otherwise validate user home access.')
       .option('-s, --settings <path>', 'Path to settings.json file')
+      .option('-r, --repository <path>', 'Local repository path for context (must exist; warns if not a Git repo)')
       .action(async (options) => {
         const cli = new BenchmarkCLI({
           verbose: program.opts().verbose,

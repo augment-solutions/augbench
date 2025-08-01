@@ -17,7 +17,9 @@ class AssessableMetric extends BaseMetric {
     this.logger = new Logger(options);
     this.endpoint = process.env.LLM_OPENAI_ENDPOINT;
     this.apiKey = process.env.LLM_API_KEY;
-    this.model = options.model || 'gpt-3.5-turbo';
+    this.provider = (options.provider || process.env.LLM_PROVIDER || 'openai-compatible').toLowerCase();
+    this.anthropicVersion = options.anthropicVersion || process.env.LLM_ANTHROPIC_VERSION || '2023-06-01';
+    this.model = options.model || process.env.LLM_MODEL || 'gpt-3.5-turbo';
     this.timeout = options.timeout || 30000;
     this.maxRetries = options.maxRetries || 3;
   }
@@ -81,32 +83,70 @@ class AssessableMetric extends BaseMetric {
       try {
         this.logger.debug(`LLM assessment attempt ${attempt}/${this.maxRetries}`);
         
-        const response = await axios.post(
-          `${this.endpoint}/chat/completions`,
-          {
-            model: this.model,
-            messages: [
-              {
-                role: 'user',
-                content: prompt
-              }
-            ],
-            max_tokens: 500,
-            temperature: 0.1 // Low temperature for consistent assessments
-          },
-          {
-            headers: {
-              'Authorization': `Bearer ${this.apiKey}`,
-              'Content-Type': 'application/json'
+        let response;
+        if (this.provider === 'anthropic') {
+          // Anthropic Messages API
+          response = await axios.post(
+            `${this.endpoint}/messages`,
+            {
+              model: this.model,
+              max_tokens: 500,
+              temperature: 0.1,
+              messages: [
+                {
+                  role: 'user',
+                  content: [
+                    { type: 'text', text: prompt }
+                  ]
+                }
+              ]
             },
-            timeout: this.timeout
+            {
+              headers: {
+                'x-api-key': this.apiKey,
+                'anthropic-version': this.anthropicVersion,
+                'Content-Type': 'application/json'
+              },
+              timeout: this.timeout
+            }
+          );
+
+          const contentBlocks = response.data?.content;
+          if (Array.isArray(contentBlocks) && contentBlocks.length > 0) {
+            const firstText = contentBlocks.find(b => b?.type === 'text');
+            if (firstText?.text) {
+              return firstText.text.trim();
+            }
           }
-        );
-        
-        if (response.data?.choices?.[0]?.message?.content) {
-          return response.data.choices[0].message.content.trim();
+          throw new Error('Invalid response format from Anthropic API');
         } else {
-          throw new Error('Invalid response format from LLM API');
+          // OpenAI-compatible Chat Completions API
+          response = await axios.post(
+            `${this.endpoint}/chat/completions`,
+            {
+              model: this.model,
+              messages: [
+                {
+                  role: 'user',
+                  content: prompt
+                }
+              ],
+              max_tokens: 500,
+              temperature: 0.1
+            },
+            {
+              headers: {
+                'Authorization': `Bearer ${this.apiKey}`,
+                'Content-Type': 'application/json'
+              },
+              timeout: this.timeout
+            }
+          );
+
+          if (response.data?.choices?.[0]?.message?.content) {
+            return response.data.choices[0].message.content.trim();
+          }
+          throw new Error('Invalid response format from OpenAI-compatible API');
         }
         
       } catch (error) {

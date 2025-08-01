@@ -15,6 +15,7 @@ const { RepositorySelector } = require('./RepositorySelector');
 const { EnvironmentConfig } = require('../config/EnvironmentConfig');
 const { SettingsManager } = require('../config/SettingsManager');
 const { BenchmarkRunner } = require('./BenchmarkRunner');
+const { AdapterFactory } = require('../adapters/AdapterFactory');
 
 class BenchmarkCLI {
   constructor(options = {}) {
@@ -53,7 +54,22 @@ class BenchmarkCLI {
       // Step 4: Settings Validation
       this.logger.step(4, 8, 'Settings Validation');
       const settings = await this.settingsManager.validateSettings();
-      
+
+      // Assistant availability check before confirmation
+      this.logger.info('Checking assistant availability...');
+      const adapterFactory = new AdapterFactory(this.options);
+      const availability = await adapterFactory.checkAdapterAvailability(settings.assistants);
+      const unavailable = Object.entries(availability)
+        .filter(([_, info]) => !info.available)
+        .map(([name, info]) => `${name}${info.error ? ` (${info.error})` : ''}`);
+      if (unavailable.length > 0) {
+        throw new Error(`The following assistants are not available or failed to initialize: ${unavailable.join(', ')}`);
+      }
+      Object.entries(availability).forEach(([name, info]) => {
+        const versionText = info.version ? ` (version: ${info.version})` : '';
+        this.logger.success(`${name} is available${versionText}`);
+      });
+
       // Step 5: Final Confirmation
       this.logger.step(5, 8, 'Final Confirmation');
       const confirmed = await this.confirmConfiguration(repositoryPath, settings);
@@ -120,7 +136,43 @@ class BenchmarkCLI {
       // Validate settings
       const settings = await this.settingsManager.validateSettings();
       this.logger.success('Settings configuration is valid');
-      
+
+      // Validate repository path if provided; otherwise validate home access
+      if (this.options.repository) {
+        const absPath = this.repositorySelector.fs.getAbsolutePath(this.options.repository.trim());
+        await this.repositorySelector.validateRepository(absPath);
+        this.logger.success('Repository path validation passed');
+      } else {
+        await this.validator.validateHomeAccess();
+        this.logger.success('User home directory access OK');
+      }
+
+      // Validate CLI assistants (Augment CLI and Claude Code) initialization
+      this.logger.info('Checking CLI assistant availability...');
+      const adapterFactory = new AdapterFactory(this.options);
+      const toCheck = ['Augment CLI', 'Claude Code'];
+      const check = await adapterFactory.checkAdapterAvailability(toCheck);
+
+      const requiredMissing = [];
+      for (const name of toCheck) {
+        const info = check[name];
+        if (info && info.available) {
+          const versionText = info.version ? ` (version: ${info.version})` : '';
+          this.logger.success(`${name} is available${versionText}`);
+        } else {
+          const errText = info && info.error ? `: ${info.error}` : '';
+          if (settings.assistants && settings.assistants.includes(name)) {
+            requiredMissing.push(`${name}${errText}`);
+          } else {
+            this.logger.warn(`${name} is not available${errText}`);
+          }
+        }
+      }
+
+      if (requiredMissing.length > 0) {
+        throw new Error(`Required assistants not available or failed to initialize: ${requiredMissing.join(', ')}`);
+      }
+
       this.logger.info('Configuration summary:');
       this.logger.info(`- Prompts: ${settings.num_prompts}`);
       this.logger.info(`- Assistants: ${settings.assistants.join(', ')}`);

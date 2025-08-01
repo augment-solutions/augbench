@@ -1,6 +1,7 @@
 # Backbencher specific files to ignore
 backbencher.md
 backbencher1.md
+metrics.md
 .env
 .DS_Store
 .gitkeep

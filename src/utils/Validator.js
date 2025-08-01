@@ -3,6 +3,7 @@
  */
 
 const path = require('path');
+const os = require('os');
 const { FileSystem } = require('./FileSystem');
 const { ErrorHandler } = require('./ErrorHandler');
 
@@ -287,13 +288,28 @@ class Validator {
         throw new Error('LLM_OPENAI_ENDPOINT environment variable is required');
       }
       this.validateUrl(env.LLM_OPENAI_ENDPOINT);
-      
+
       // Validate API key
       if (!env.LLM_API_KEY) {
         throw new Error('LLM_API_KEY environment variable is required');
       }
       this.validateApiKey(env.LLM_API_KEY);
-      
+
+      // Optional provider-specific validation
+      const provider = (env.LLM_PROVIDER || 'openai-compatible').toLowerCase();
+      if (provider === 'anthropic') {
+        // Endpoint should likely be https://api.anthropic.com/v1
+        // but we just ensure it's a valid URL format (done above).
+        // Validate Anthropic version if provided
+        if (env.LLM_ANTHROPIC_VERSION) {
+          this.errorHandler.validateInput(env.LLM_ANTHROPIC_VERSION, {
+            required: true,
+            type: 'string',
+            string: { minLength: 6 }
+          });
+        }
+      }
+
       return true;
     } catch (error) {
       this.errorHandler.handleError(error, 'environment_validation');
@@ -349,6 +365,34 @@ class Validator {
       return true;
     } catch (error) {
       this.errorHandler.handleError(error, 'command_args_validation');
+      throw error;
+    }
+  }
+
+  /**
+   * Validate access to the current user's home directory
+   * Ensures the path resolves and is accessible.
+   */
+  async validateHomeAccess() {
+    try {
+      const home = os.homedir();
+      if (!home || typeof home !== 'string' || home.trim() === '') {
+        throw new Error('Unable to resolve user home directory');
+      }
+
+      const abs = this.fs.getAbsolutePath(home);
+      if (!(await this.fs.exists(abs))) {
+        throw new Error(`Home directory not accessible: ${abs}`);
+      }
+
+      const stats = await this.fs.getStats(abs);
+      if (!stats.isDirectory()) {
+        throw new Error(`Home path is not a directory: ${abs}`);
+      }
+
+      return true;
+    } catch (error) {
+      this.errorHandler.handleError(error, 'home_access_validation');
       throw error;
     }
   }

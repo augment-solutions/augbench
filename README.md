@@ -121,6 +121,9 @@ Edit `.env` file with your LLM endpoint and API key:
 ```env
 LLM_OPENAI_ENDPOINT=https://api.openai.com/v1
 LLM_API_KEY=your-api-key-here
+# LLM_PROVIDER=openai-compatible (default) or anthropic
+# LLM_MODEL=your-model-id
+# LLM_ANTHROPIC_VERSION=2023-06-01
 ```
 
 3. **Customize settings:**
@@ -153,15 +156,27 @@ Initialize configuration files (`.env` and `settings.json`) in the current direc
 Run benchmark tests on AI coding assistants.
 
 **Options:**
-- `--repository <path>`: Path to repository for context (default: current directory)
+- `--repository <path>`: Local path to repository for context (default: current directory)
 - `--settings <path>`: Path to settings file (default: ./settings.json)
 - `--output <path>`: Output directory for results
 
 #### `backbencher validate`
-Validate configuration and settings files.
+Validate environment, settings, LLM connectivity, and CLI assistant availability (Augment CLI and Claude Code). If `--repository` is provided, validates that the path exists and is a directory (warns if not a Git repo). Otherwise validates access to the user’s home directory.
 
 **Options:**
 - `--settings <path>`: Path to settings file to validate
+- `--repository <path>`: Local repository path to validate (must exist; warns if not a Git repo)
+
+Validation behavior:
+- LLM connectivity test:
+  - For `LLM_PROVIDER=anthropic`: performs a minimal POST to `/v1/messages`
+  - For `openai-compatible` (default): calls `GET /models`
+- Repository path:
+  - If provided, checks existence and directory; warns if missing `.git`
+- CLI assistants:
+  - Checks availability of Augment CLI and Claude Code. If either is configured in `settings.json` but unavailable, validation fails.
+- Home directory:
+  - If no `--repository` is provided, validates access to the OS home directory
 
 #### Global Options
 - `-v, --verbose`: Enable verbose logging
@@ -174,11 +189,24 @@ Validate configuration and settings files.
 #### Environment Variables (.env)
 
 ```env
-# Required: LLM endpoint URL
-LLM_OPENAI_ENDPOINT=https://api.openai.com/v1
+# LLM endpoint URL
+# - OpenAI-compatible gateway (e.g., https://openrouter.ai/api/v1 or your LiteLLM server)
+# - Anthropic native (https://api.anthropic.com/v1) when using LLM_PROVIDER=anthropic
+LLM_OPENAI_ENDPOINT=
 
-# Required: API key for the LLM service
-LLM_API_KEY=your-api-key-here
+# API key for the LLM service (Gateway key or Anthropic key)
+LLM_API_KEY=
+
+# Optional: Select model id, e.g., anthropic/claude-3.5-sonnet-20241022 (provider-dependent)
+# Defaults to gpt-3.5-turbo if not set
+LLM_MODEL=
+
+# Optional: Provider hint (openai-compatible | anthropic). Default: openai-compatible
+LLM_PROVIDER=
+
+# Optional: Anthropic API version (only when LLM_PROVIDER=anthropic)
+# Default: 2023-06-01 (update to current if needed)
+LLM_ANTHROPIC_VERSION=2023-06-01
 
 # Optional: Debug mode
 DEBUG=false
@@ -186,6 +214,13 @@ DEBUG=false
 # Optional: Request timeout in milliseconds
 TIMEOUT=30000
 ```
+
+Note on repository paths:
+- Provide a local filesystem path (absolute or relative), not a remote Git URL.
+- Examples:
+  - macOS/Linux: `backbencher benchmark --repository /Users/you/code/my-repo`
+  - Windows: `backbencher benchmark --repository "C:\Users\you\code\my-repo"`
+  - If you want to benchmark a GitHub repo, clone it locally first and pass the cloned directory path.
 
 #### Settings (settings.json)
 

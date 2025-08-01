@@ -9,7 +9,7 @@ const { BaseAdapter } = require('./BaseAdapter');
 class AugmentCLIAdapter extends BaseAdapter {
   constructor(options = {}) {
     super('Augment CLI', options);
-    this.command = options.command || 'augment';
+    this.command = options.command || 'auggie';
     this.args = options.args || [];
   }
 
