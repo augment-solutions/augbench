@@ -109,6 +109,7 @@ describe('Backbencher CLI', function() {
         expect(output).to.include('benchmark');
         expect(output).to.include('init');
         expect(output).to.include('validate');
+        expect(output).to.include('metrics');
         done();
       });
       

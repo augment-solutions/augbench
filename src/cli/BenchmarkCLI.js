@@ -28,7 +28,7 @@ class BenchmarkCLI {
     this.resultsStorage = new ResultsStorage(options);
     this.repositorySelector = new RepositorySelector(options);
     this.environmentConfig = new EnvironmentConfig(options);
-    this.settingsManager = new SettingsManager(options);
+    this.settingsManager = new SettingsManager({ ...options, settingsPath: options.settings || options.settingsPath });
     this.benchmarkRunner = new BenchmarkRunner(options);
   }
 
@@ -38,19 +38,19 @@ class BenchmarkCLI {
   async run() {
     try {
       this.logger.info(chalk.bold('🏃 Starting Backbencher - AI Assistant Benchmarking Tool'));
-      
+
       // Step 1: Repository Selection
       this.logger.step(1, 8, 'Repository Selection');
       const repositoryPath = await this.repositorySelector.selectRepository(this.options.repository);
-      
+
       // Step 2: Environment Configuration
       this.logger.step(2, 8, 'Environment Configuration');
       await this.environmentConfig.configure();
-      
+
       // Step 3: Settings Management
       this.logger.step(3, 8, 'Settings Management');
       await this.settingsManager.ensureSettings();
-      
+
       // Step 4: Settings Validation
       this.logger.step(4, 8, 'Settings Validation');
       const settings = await this.settingsManager.validateSettings();
@@ -73,24 +73,34 @@ class BenchmarkCLI {
       // Step 5: Final Confirmation
       this.logger.step(5, 8, 'Final Confirmation');
       const confirmed = await this.confirmConfiguration(repositoryPath, settings);
-      
+
       if (!confirmed) {
         this.logger.info('Benchmark cancelled by user');
         return;
       }
-      
+
       // Step 6: Benchmark Execution
       this.logger.step(6, 8, 'Benchmark Execution');
       const results = await this.benchmarkRunner.runBenchmarks(repositoryPath, settings);
-      
+
       // Step 7: Results Storage
       this.logger.step(7, 8, 'Results Storage');
       await this.saveResults(results, settings.output_filename);
-      
+
       // Step 8: Completion
       this.logger.step(8, 8, 'Completion');
       this.logger.success(`Benchmark completed! Results saved to ${settings.output_filename}`);
-      
+
+      // Print summary to CLI
+      try {
+        const summaryText = this.formatSummary(results, settings);
+        if (summaryText) {
+          console.log('\n' + summaryText);
+        }
+      } catch (e) {
+        this.logger.warn('Failed to render summary:', e.message);
+      }
+
     } catch (error) {
       this.logger.error('Benchmark failed:', error.message);
       if (this.options.verbose) {
@@ -106,16 +116,16 @@ class BenchmarkCLI {
   async init() {
     try {
       this.logger.info(chalk.bold('🔧 Initializing Backbencher configuration'));
-      
+
       await this.settingsManager.createTemplateSettings(this.options.force);
       await this.environmentConfig.createTemplateEnv(this.options.force);
-      
+
       this.logger.success('Configuration files created successfully!');
       this.logger.info('Next steps:');
       this.logger.info('1. Update .env with your LLM endpoint and API key');
       this.logger.info('2. Customize settings.json with your prompts and preferences');
       this.logger.info('3. Run: backbencher benchmark');
-      
+
     } catch (error) {
       this.logger.error('Initialization failed:', error.message);
       throw error;
@@ -128,11 +138,11 @@ class BenchmarkCLI {
   async validate() {
     try {
       this.logger.info(chalk.bold('✅ Validating Backbencher configuration'));
-      
+
       // Validate environment
       await this.environmentConfig.validate();
       this.logger.success('Environment configuration is valid');
-      
+
       // Validate settings
       const settings = await this.settingsManager.validateSettings();
       this.logger.success('Settings configuration is valid');
@@ -178,7 +188,7 @@ class BenchmarkCLI {
       this.logger.info(`- Assistants: ${settings.assistants.join(', ')}`);
       this.logger.info(`- Runs per prompt: ${settings.runs_per_prompt}`);
       this.logger.info(`- Output file: ${settings.output_filename}`);
-      
+
     } catch (error) {
       this.logger.error('Validation failed:', error.message);
       throw error;
@@ -195,7 +205,7 @@ class BenchmarkCLI {
     this.logger.info(`Assistants: ${settings.assistants.join(', ')}`);
     this.logger.info(`Runs per prompt: ${settings.runs_per_prompt}`);
     this.logger.info(`Output file: ${settings.output_filename}`);
-    
+
     const { confirmed } = await inquirer.prompt([
       {
         type: 'confirm',
@@ -204,10 +214,37 @@ class BenchmarkCLI {
         default: true
       }
     ]);
-    
+
     return confirmed;
   }
 
+  /**
+   * Format a short summary string for CLI output
+   */
+  formatSummary(results, settings) {
+    try {
+      const summary = this.resultsStorage.withOptions
+        ? this.resultsStorage.withOptions({ metrics_config: settings.metrics_config })
+        : new ResultsStorage({ metrics_config: settings.metrics_config });
+      const s = summary.generateSummary(results);
+      const lines = [];
+      lines.push('Summary per assistant:');
+      for (const [assistant, a] of Object.entries(s.assistants)) {
+        lines.push(
+          `- ${assistant}: runs=${a.runs}, completed=${(a.taskCompletionRate*100).toFixed(1)}%` +
+          `, agent_success=${(a.agentSuccessRate*100).toFixed(1)}%` +
+          `${a.avgResponseTime != null ? `, avg_time=${a.avgResponseTime}s` : ''}` +
+          `${a.avgQuality != null ? `, avg_quality=${a.avgQuality}` : ''}` +
+          `, format_ok=${(a.outputFormatSuccessRate*100).toFixed(1)}%` +
+          `, llm_err=${(a.llmCallErrorRate*100).toFixed(1)}%`
+        );
+      }
+      return lines.join('\n');
+    } catch (e) {
+      this.logger.warn('Unable to compute summary for CLI:', e.message);
+      return '';
+    }
+  }
   /**
    * Save benchmark results to file
    */
@@ -215,7 +252,7 @@ class BenchmarkCLI {
     const metadata = {
       platform: this.platform.getPlatformInfo(),
       timestamp: new Date().toISOString(),
-      settings: outputFilename
+      settings // include full settings (contains metrics_config)
     };
 
     await this.resultsStorage.saveResults(results, outputFilename, metadata);

@@ -5,6 +5,10 @@
 const { Logger } = require('../utils/Logger');
 const { ResponseTimeMetric } = require('./ResponseTimeMetric');
 const { OutputQualityMetric } = require('./OutputQualityMetric');
+const { OutputFormatSuccessMetric } = require('./OutputFormatSuccessMetric');
+const { InstructionAdherenceMetric } = require('./InstructionAdherenceMetric');
+const { ContextAdherenceMetric } = require('./ContextAdherenceMetric');
+const { StepsPerTaskMetric } = require('./StepsPerTaskMetric');
 
 class MetricsFactory {
   constructor(options = {}) {
@@ -20,6 +24,10 @@ class MetricsFactory {
   registerBuiltInMetrics() {
     this.registerMetric('response_time', ResponseTimeMetric);
     this.registerMetric('output_quality', OutputQualityMetric);
+    this.registerMetric('output_format_success', OutputFormatSuccessMetric);
+    this.registerMetric('instruction_adherence', InstructionAdherenceMetric);
+    this.registerMetric('context_adherence', ContextAdherenceMetric);
+    this.registerMetric('steps_per_task', StepsPerTaskMetric);
   }
 
   /**

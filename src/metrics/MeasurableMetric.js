@@ -7,11 +7,10 @@ const { BaseMetric } = require('./BaseMetric');
 
 class MeasurableMetric extends BaseMetric {
   constructor(name, options = {}) {
-    if (this.constructor === MeasurableMetric) {
+    super(name, options);
+    if (new.target === MeasurableMetric) {
       throw new Error('MeasurableMetric is an abstract class and cannot be instantiated directly');
     }
-    
-    super(name, options);
     this.precision = options.precision || 2;
     this.minValue = options.minValue;
     this.maxValue = options.maxValue;
