@@ -10,7 +10,7 @@ Backbencher is designed to provide objective, reproducible benchmarks for AI cod
 
 - **Cross-Platform**: Works seamlessly on macOS, Linux, and Windows
 - **Extensible Architecture**: Easy to add new AI assistants, metrics, and evaluators
-- **Comprehensive Metrics**: Response time, output quality, and custom metrics
+- **Comprehensive Metrics**: Response time, output quality, instruction/context adherence, output format success, steps per task, and summary rates
 - **Interactive CLI**: User-friendly prompts and progress indicators
 - **Robust Error Handling**: Graceful failure recovery and detailed error reporting
 - **Flexible Configuration**: JSON-based settings with validation
@@ -90,7 +90,7 @@ backbencher/
 ## Installation
 
 ### Prerequisites
-- Node.js 16+ 
+- Node.js 16+
 - npm or yarn
 - AI assistants you want to benchmark (Claude Code, Augment CLI, etc.)
 
@@ -135,7 +135,18 @@ Edit `settings.json` to configure prompts, assistants, and metrics:
   "assistants": ["Claude Code", "Augment CLI"],
   "runs_per_prompt": 2,
   "output_filename": "results.json",
-  "metrics": ["response_time", "output_quality"]
+  "metrics": [
+    "response_time",
+    "output_quality",
+    "output_format_success",
+    "instruction_adherence",
+    "context_adherence",
+    "steps_per_task"
+  ],
+  "metrics_config": {
+    "agent_success": { "threshold": 7, "mode": "quality" },
+    "output_format": { "regex": "^\\{[\\s\\S]*\\}$" }
+  }
 }
 ```
 
@@ -153,7 +164,7 @@ Initialize configuration files (`.env` and `settings.json`) in the current direc
 - `--force`: Overwrite existing configuration files
 
 #### `backbencher benchmark`
-Run benchmark tests on AI coding assistants.
+Run benchmark tests on AI coding assistants. After completion, a brief summary is printed to the console (per assistant: runs, completion rate, agent success rate, average response time, average quality, output format success rate, and evaluator LLM error rate).
 
 **Options:**
 - `--repository <path>`: Local path to repository for context (default: current directory)
@@ -177,6 +188,12 @@ Validation behavior:
   - Checks availability of Augment CLI and Claude Code. If either is configured in `settings.json` but unavailable, validation fails.
 - Home directory:
   - If no `--repository` is provided, validates access to the OS home directory
+
+#### `backbencher metrics`
+List available metrics and their descriptions. Use `--json` to get machine-readable metadata and metrics_config help.
+
+Options:
+- `--json`: Output as JSON
 
 #### Global Options
 - `-v, --verbose`: Enable verbose logging
@@ -229,7 +246,7 @@ Note on repository paths:
   "num_prompts": 3,
   "prompts": [
     "prompt1.md",
-    "prompt2.md", 
+    "prompt2.md",
     "prompt3.md"
   ],
   "assistants": [
@@ -390,7 +407,18 @@ ORDER BY o.created_at DESC;
   "assistants": ["Claude Code", "Augment CLI"],
   "runs_per_prompt": 2,
   "output_filename": "results.json",
-  "metrics": ["response_time", "output_quality"]
+  "metrics": [
+    "response_time",
+    "output_quality",
+    "output_format_success",
+    "instruction_adherence",
+    "context_adherence",
+    "steps_per_task"
+  ],
+  "metrics_config": {
+    "agent_success": { "threshold": 7, "mode": "quality" },
+    "output_format": { "json_schema_path": "schemas/output.schema.json" }
+  }
 }
 ```
 
@@ -522,6 +550,29 @@ const validAssistants = [
   "assistants": ["Claude Code", "Augment CLI", "New Assistant"]
 }
 ```
+
+### Metrics Reference
+
+Per-run metrics (recorded per run):
+- response_time (Measurable): seconds
+- output_quality (Assessable): 1–10 score
+- output_format_success (Measurable): 1 or 0; configured via metrics_config.output_format.regex or .json_schema_path
+- instruction_adherence (Assessable): 1–10 score
+- context_adherence (Assessable): 1–10 score
+- steps_per_task (Measurable): number of steps if detectable; otherwise null
+
+Summary metrics (computed in results summary):
+- task_completion_rate
+- agent_success_rate (configurable; defaults to output_quality >= threshold 7)
+- llm_call_error_rate (evaluator LLM failures on assessable metrics)
+- output_format_success_rate
+
+Configuration keys (settings.json):
+- metrics: ["response_time", "output_quality", "output_format_success", "instruction_adherence", "context_adherence", "steps_per_task"]
+- metrics_config.agent_success: { threshold: 7, mode: "quality" | "completion" }
+- metrics_config.output_format: { regex?: string, json_schema_path?: string }
+
+Evaluator LLM env (for Assessable metrics): LLM_PROVIDER (anthropic | openai-compatible), LLM_OPENAI_ENDPOINT, LLM_API_KEY, LLM_MODEL, LLM_ANTHROPIC_VERSION.
 
 ### Adding a New Metric
 

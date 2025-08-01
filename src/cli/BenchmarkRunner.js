@@ -27,7 +27,7 @@ class BenchmarkRunner {
     this.logger.info(`Starting benchmark with ${totalRuns} total runs`);
 
     // Initialize metrics
-    const metrics = await this.initializeMetrics(settings.metrics);
+    const metrics = await this.initializeMetrics(settings.metrics, settings.metrics_config || {});
     
     // Process each prompt
     for (const promptFile of settings.prompts) {
@@ -98,6 +98,7 @@ class BenchmarkRunner {
     
     // Measure all metrics
     const metricResults = {};
+    const evaluatorErrors = [];
     for (const [metricName, metric] of Object.entries(metrics)) {
       try {
         metricResults[metricName] = await metric.measure(output, {
@@ -107,26 +108,36 @@ class BenchmarkRunner {
         });
       } catch (error) {
         this.logger.warn(`Failed to measure ${metricName}: ${error.message}`);
+        try {
+          const { AssessableMetric } = require('../metrics/AssessableMetric');
+          if (metric instanceof AssessableMetric) {
+            evaluatorErrors.push(metricName);
+          }
+        } catch (_) { /* ignore */ }
         metricResults[metricName] = null;
       }
     }
     
-    return {
+    const runRecord = {
       run_id: runId,
       response_time: parseFloat(responseTime.toFixed(2)),
       ...metricResults
     };
+    if (evaluatorErrors.length > 0) {
+      runRecord._evaluator_errors = evaluatorErrors;
+    }
+    return runRecord;
   }
 
   /**
    * Initialize metric instances
    */
-  async initializeMetrics(metricNames) {
+  async initializeMetrics(metricNames, metricsConfig = {}) {
     const metrics = {};
     
     for (const metricName of metricNames) {
       try {
-        metrics[metricName] = await this.metricsFactory.createMetric(metricName);
+        metrics[metricName] = await this.metricsFactory.createMetric(metricName, { metrics_config: metricsConfig });
         this.logger.debug(`Initialized metric: ${metricName}`);
       } catch (error) {
         this.logger.error(`Failed to initialize metric ${metricName}: ${error.message}`);

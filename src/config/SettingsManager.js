@@ -13,7 +13,7 @@ class SettingsManager {
     this.options = options;
     this.logger = new Logger(options);
     this.fs = new FileSystem(options);
-    this.settingsPath = path.join(process.cwd(), 'settings.json');
+    this.settingsPath = options.settingsPath || path.join(process.cwd(), 'settings.json');
     this.schema = this.createValidationSchema();
   }
 
@@ -96,7 +96,7 @@ class SettingsManager {
 
     // Read and parse settings
     const settings = await this.fs.readJSON(this.settingsPath);
-    
+
     // Validate against schema
     const { error, value } = this.schema.validate(settings);
     if (error) {
@@ -106,6 +106,25 @@ class SettingsManager {
     // Additional validations
     await this.validatePromptFiles(value.prompts);
     await this.validateAssistants(value.assistants);
+
+    // Metrics config warnings
+    const mc = value.metrics_config || {};
+    if (value.metrics.includes('output_format_success')) {
+      const oc = mc.output_format || {};
+      if (!oc.regex && !oc.json_schema_path) {
+        this.logger.warn('Metric output_format_success is enabled but no regex or json_schema_path is configured under metrics_config.output_format');
+      } else if (oc.json_schema_path) {
+        const abs = this.fs.getAbsolutePath(oc.json_schema_path);
+        if (!(await this.fs.exists(abs))) {
+          this.logger.warn(`metrics_config.output_format.json_schema_path does not exist: ${oc.json_schema_path}`);
+        }
+      }
+    }
+
+    const as = mc.agent_success || {};
+    if ((as.mode || 'quality') === 'quality' && !value.metrics.includes('output_quality')) {
+      this.logger.warn('metrics_config.agent_success.mode is "quality" but output_quality metric is not enabled; agent_success_rate will be 0');
+    }
 
     this.logger.success('Settings validation passed');
     return value;
@@ -177,8 +196,16 @@ class SettingsManager {
       output_filename: "results.json",
       metrics: [
         "response_time",
-        "output_quality"
-      ]
+        "output_quality",
+        "output_format_success",
+        "instruction_adherence",
+        "context_adherence",
+        "steps_per_task"
+      ],
+      metrics_config: {
+        agent_success: { threshold: 7, mode: "quality" },
+        output_format: { regex: "^.{1,}$" }
+      }
     };
 
     await this.fs.writeJSON(this.settingsPath, template);
@@ -206,7 +233,18 @@ class SettingsManager {
         .description('Output filename for results'),
       
       metrics: Joi.array().items(Joi.string().min(1)).min(1).required()
-        .description('Array of metric names to measure')
+        .description('Array of metric names to measure'),
+
+      metrics_config: Joi.object({
+        agent_success: Joi.object({
+          threshold: Joi.number().min(0).max(10).default(7),
+          mode: Joi.string().valid('quality', 'completion').default('quality')
+        }).default({}),
+        output_format: Joi.object({
+          regex: Joi.string(),
+          json_schema_path: Joi.string()
+        }).default({})
+      }).default({})
     }).custom((value, helpers) => {
       // Validate that num_prompts matches prompts array length
       if (value.num_prompts !== value.prompts.length) {

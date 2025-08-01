@@ -193,7 +193,11 @@ class ResultsStorage {
           successfulRuns: 0,
           failedRuns: 0,
           avgResponseTime: null,
-          avgQuality: null
+          avgQuality: null,
+          taskCompletionRate: 0,
+          agentSuccessRate: 0,
+          llmCallErrorRate: 0,
+          outputFormatSuccessRate: 0
         };
       }
       
@@ -205,6 +209,13 @@ class ResultsStorage {
       const responseTimes = [];
       const qualityScores = [];
       
+      const metricsConfig = (this.options && this.options.metrics_config) || {};
+      const agentCfg = metricsConfig.agent_success || {};
+      const mode = (agentCfg.mode || 'quality');
+      const threshold = (typeof agentCfg.threshold === 'number') ? agentCfg.threshold : 7;
+      let ofSuccessCount = 0;
+      let evalErrCount = 0;
+
       for (const run of result.runs) {
         if (run.error) {
           assistantSummary.failedRuns++;
@@ -218,9 +229,19 @@ class ResultsStorage {
           if (run.output_quality !== null) {
             qualityScores.push(run.output_quality);
           }
+
+          // output_format_success rate
+          if (run.output_format_success === 1) {
+            ofSuccessCount += 1;
+          }
+
+          // evaluator failure flag
+          if (Array.isArray(run._evaluator_errors) && run._evaluator_errors.length > 0) {
+            evalErrCount += 1;
+          }
         }
       }
-      
+
       // Calculate averages
       if (responseTimes.length > 0) {
         const avgTime = responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
@@ -231,8 +252,20 @@ class ResultsStorage {
         const avgQuality = qualityScores.reduce((sum, score) => sum + score, 0) / qualityScores.length;
         assistantSummary.avgQuality = Math.round(avgQuality * 100) / 100;
       }
+
+      // Summary rates
+      const total = assistantSummary.runs;
+      assistantSummary.taskCompletionRate = total ? (assistantSummary.successfulRuns / total) : 0;
+      if (mode === 'completion') {
+        assistantSummary.agentSuccessRate = assistantSummary.taskCompletionRate;
+      } else {
+        const successByQuality = (result.runs || []).filter(r => typeof r.output_quality === 'number' && r.output_quality >= threshold).length;
+        assistantSummary.agentSuccessRate = total ? (successByQuality / total) : 0;
+      }
+      assistantSummary.llmCallErrorRate = total ? (evalErrCount / total) : 0;
+      assistantSummary.outputFormatSuccessRate = total ? (ofSuccessCount / total) : 0;
     }
-    
+
     // Analyze by prompt
     for (const result of results) {
       if (!summary.prompts[result.prompt]) {
@@ -285,23 +318,33 @@ class ResultsStorage {
    * @returns {string} - CSV content
    */
   convertToCSV(results) {
-    const headers = ['prompt', 'assistant', 'run_id', 'response_time', 'output_quality', 'error'];
-    const rows = [headers.join(',')];
-    
+    const baseHeaders = ['prompt', 'assistant', 'run_id', 'response_time', 'output_quality', 'error'];
+
+    // Discover extra metric columns present in any run
+    const extraColsSet = new Set();
     for (const result of results) {
       for (const run of result.runs) {
-        const row = [
-          `"${result.prompt}"`,
-          `"${result.assistant}"`,
-          run.run_id,
-          run.response_time || '',
-          run.output_quality || '',
-          run.error ? `"${run.error}"` : ''
-        ];
+        Object.keys(run).forEach(k => {
+          if (!baseHeaders.includes(k) && !k.startsWith('_')) extraColsSet.add(k);
+        });
+      }
+    }
+    const headers = [...baseHeaders, ...Array.from(extraColsSet)];
+    const rows = [headers.join(',')];
+
+    for (const result of results) {
+      for (const run of result.runs) {
+        const row = headers.map(h => {
+          if (h === 'prompt') return `"${result.prompt}"`;
+          if (h === 'assistant') return `"${result.assistant}"`;
+          if (h === 'error') return run.error ? `"${run.error}"` : '';
+          const v = run[h];
+          return v === undefined || v === null ? '' : v;
+        });
         rows.push(row.join(','));
       }
     }
-    
+
     return rows.join('\n');
   }
 }

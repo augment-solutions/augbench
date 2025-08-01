@@ -11,6 +11,19 @@ const { Logger } = require('./utils/Logger');
 const program = new Command();
 const logger = new Logger();
 
+function metricsConfigHelp() {
+  return {
+    agent_success: {
+      threshold: 'Number 0-10 (default 7). When mode=quality, success means output_quality >= threshold',
+      mode: "'quality' or 'completion' (default 'quality'). When 'completion', success means run had no error"
+    },
+    output_format: {
+      regex: 'Optional string regex to validate assistant output (pass=1, fail=0)',
+      json_schema_path: 'Optional path to a JSON Schema file; output must be valid JSON matching schema'
+    }
+  };
+}
+
 /**
  * Main CLI function
  */
@@ -41,7 +54,7 @@ async function main() {
           output: program.opts().output,
           ...options
         });
-        
+
         await cli.run();
       });
 
@@ -56,7 +69,7 @@ async function main() {
           quiet: program.opts().quiet,
           ...options
         });
-        
+
         await cli.init();
       });
 
@@ -72,8 +85,35 @@ async function main() {
           quiet: program.opts().quiet,
           ...options
         });
-        
+
         await cli.validate();
+      });
+
+    // Add metrics command to list available metrics and config options
+    program
+      .command('metrics')
+      .description('List available metrics and configuration options')
+      .option('--json', 'Output as JSON')
+      .action(async (options) => {
+        const { MetricsFactory } = require('./metrics/MetricsFactory');
+        const factory = new MetricsFactory({ verbose: program.opts().verbose, quiet: program.opts().quiet });
+        const metricsInfo = factory.getAllMetricsInfo();
+        if (options.json) {
+          console.log(JSON.stringify({ metrics: metricsInfo, metrics_config: metricsConfigHelp() }, null, 2));
+          return;
+        }
+        console.log(chalk.bold('\nAvailable metrics:'));
+        for (const info of metricsInfo) {
+          console.log(`- ${info.name}: ${info.description} [type=${info.type}]${info.unit ? `, unit=${info.unit}` : ''}`);
+        }
+        console.log('\nmetrics_config options:');
+        const config = metricsConfigHelp();
+        for (const [section, details] of Object.entries(config)) {
+          console.log(`- ${section}:`);
+          for (const [key, val] of Object.entries(details)) {
+            console.log(`   ${key}: ${val}`);
+          }
+        }
       });
 
     // Parse command line arguments
