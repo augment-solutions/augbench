@@ -39,21 +39,31 @@ class BenchmarkCLI {
     try {
       this.logger.info(chalk.bold('🏃 Starting Backbencher - AI Assistant Benchmarking Tool'));
 
-      // Step 1: Repository Selection
-      this.logger.step(1, 8, 'Repository Selection');
-      const repositoryPath = await this.repositorySelector.selectRepository(this.options.repository);
-
-      // Step 2: Environment Configuration
-      this.logger.step(2, 8, 'Environment Configuration');
+      // Step 1: Environment Configuration
+      this.logger.step(1, 8, 'Environment Configuration');
       await this.environmentConfig.configure();
 
-      // Step 3: Settings Management
-      this.logger.step(3, 8, 'Settings Management');
+      // Step 2: Settings Management
+      this.logger.step(2, 8, 'Settings Management');
       await this.settingsManager.ensureSettings();
 
-      // Step 4: Settings Validation
-      this.logger.step(4, 8, 'Settings Validation');
+      // Step 3: Settings Validation
+      this.logger.step(3, 8, 'Settings Validation');
       const settings = await this.settingsManager.validateSettings();
+
+      // Step 4: Repository Selection / Effective Repo Source
+      this.logger.step(4, 8, 'Repository Selection');
+      const repoUrl = this.options.repoUrl || settings.repo_url || '';
+      const repoPathOpt = this.options.repoPath || this.options.repository || settings.repo_path || '';
+      // Enforce mutual exclusivity if both are set
+      if (repoUrl && repoPathOpt) {
+        throw new Error('Exactly one of --repo-url or --repo-path/--repository must be provided');
+      }
+      // If neither is provided and no repoUrl, fall back to interactive/local selection
+      let repositoryPath = repoPathOpt;
+      if (!repoUrl && !repoPathOpt) {
+        repositoryPath = await this.repositorySelector.selectRepository(this.options.repository);
+      }
 
       // Assistant availability check before confirmation
       this.logger.info('Checking assistant availability...');
@@ -147,9 +157,33 @@ class BenchmarkCLI {
       const settings = await this.settingsManager.validateSettings();
       this.logger.success('Settings configuration is valid');
 
+      // Git installation and connectivity
+      const { GitManager } = require('../utils/GitManager');
+      const git = new GitManager(this.options);
+      try {
+        await git.ensureMinVersion('2.30.0');
+        this.logger.success('Git installation OK (>= 2.30.0)');
+      } catch (e) {
+        this.logger.error(`Git installation/version check failed: ${e.message}`);
+        throw e;
+      }
+      const publicProbe = 'https://github.com/chromium/chromium';
+      const publicOk = await git.testConnectivity(publicProbe);
+      if (publicOk) {
+        this.logger.success(`Git connectivity OK to ${publicProbe}`);
+      } else {
+        this.logger.warn(`Git connectivity failed to ${publicProbe}`);
+      }
+      if (this.options.repoUrl) {
+        const ok = await git.testConnectivity(this.options.repoUrl, process.env.GH_TOKEN || process.env.GIT_TOKEN);
+        if (ok) this.logger.success(`Remote repository reachable: ${this.options.repoUrl}`);
+        else this.logger.warn(`Cannot reach remote repository: ${this.options.repoUrl}. If private, configure GH_TOKEN/GIT_TOKEN or SSH keys.`);
+      }
+
       // Validate repository path if provided; otherwise validate home access
-      if (this.options.repository) {
-        const absPath = this.repositorySelector.fs.getAbsolutePath(this.options.repository.trim());
+      const repoPathOpt = this.options.repoPath || this.options.repository;
+      if (repoPathOpt) {
+        const absPath = this.repositorySelector.fs.getAbsolutePath(repoPathOpt.trim());
         await this.repositorySelector.validateRepository(absPath);
         this.logger.success('Repository path validation passed');
       } else {

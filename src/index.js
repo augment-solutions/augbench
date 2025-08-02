@@ -43,7 +43,14 @@ async function main() {
     program
       .command('benchmark')
       .description('Run benchmark tests on AI coding assistants')
-      .option('-r, --repository <path>', 'Local repository path for context (defaults to current directory)')
+      // Backward-compat alias for local path
+      .option('-r, --repository <path>', 'Local repository path for context (alias of --repo-path)')
+      // New repository sourcing options
+      .option('--repo-path <path>', 'Local repository path for benchmarking context')
+      .option('--repo-url <url>', 'Remote Git repository URL (HTTPS or SSH)')
+      .option('--branch <name>', 'Branch to use when cloning a remote repository')
+      .option('--ref <ref>', 'Git ref (commit SHA or tag) to checkout after clone')
+      .option('--stage-dir <dir>', 'Staging directory for per-assistant working copies (default: ./stage)')
       .option('-s, --settings <path>', 'Path to settings.json file')
       .option('--dry-run', 'Validate configuration without running benchmarks')
       .action(async (options) => {
@@ -76,9 +83,16 @@ async function main() {
     // Add validate command
     program
       .command('validate')
-      .description('Validate env, settings, LLM connectivity, and CLI assistant availability. If --repository is provided, validate that path; otherwise validate user home access.')
+      .description('Validate env, settings, LLM connectivity, Git installation/connectivity, and optional repository access.')
       .option('-s, --settings <path>', 'Path to settings.json file')
-      .option('-r, --repository <path>', 'Local repository path for context (must exist; warns if not a Git repo)')
+      // Backward-compat alias for local path
+      .option('-r, --repository <path>', 'Local repository path for context (alias of --repo-path)')
+      // New repository sourcing options
+      .option('--repo-path <path>', 'Local repository path for benchmarking context')
+      .option('--repo-url <url>', 'Remote Git repository URL (HTTPS or SSH)')
+      .option('--branch <name>', 'Branch to use when validating a remote repository')
+      .option('--ref <ref>', 'Git ref (commit SHA or tag) to validate')
+      .option('--stage-dir <dir>', 'Staging directory (default: ./stage)')
       .action(async (options) => {
         const cli = new BenchmarkCLI({
           verbose: program.opts().verbose,

@@ -335,6 +335,23 @@ class Validator {
               string: { minLength: 1 }
             });
           }
+          if (args.repoPath) {
+            this.errorHandler.validateInput(args.repoPath, {
+              required: true,
+              type: 'string',
+              string: { minLength: 1 }
+            });
+          }
+          if (args.repoUrl) {
+            this.errorHandler.validateInput(args.repoUrl, {
+              required: true,
+              type: 'string',
+              string: { minLength: 1 }
+            });
+          }
+          if (args.repoUrl && (args.repoPath || args.repository)) {
+            throw new Error('Exactly one of --repo-url or --repo-path/--repository is allowed');
+          }
           if (args.settings) {
             this.errorHandler.validateInput(args.settings, {
               required: true,
@@ -351,6 +368,23 @@ class Validator {
               type: 'string',
               string: { minLength: 1 }
             });
+          }
+          if (args.repoPath) {
+            this.errorHandler.validateInput(args.repoPath, {
+              required: true,
+              type: 'string',
+              string: { minLength: 1 }
+            });
+          }
+          if (args.repoUrl) {
+            this.errorHandler.validateInput(args.repoUrl, {
+              required: true,
+              type: 'string',
+              string: { minLength: 1 }
+            });
+          }
+          if (args.repoUrl && (args.repoPath || args.repository)) {
+            throw new Error('Exactly one of --repo-url or --repo-path/--repository is allowed');
           }
           break;
           
