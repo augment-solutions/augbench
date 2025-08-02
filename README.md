@@ -167,18 +167,33 @@ Initialize configuration files (`.env` and `settings.json`) in the current direc
 Run benchmark tests on AI coding assistants. After completion, a brief summary is printed to the console (per assistant: runs, completion rate, agent success rate, average response time, average quality, output format success rate, and evaluator LLM error rate).
 
 **Options:**
-- `--repository <path>`: Local path to repository for context (default: current directory)
+- `-r, --repository <path>`: Local path to repository for context (alias of `--repo-path`)
+- `--repo-path <path>`: Local repository path for benchmarking context
+- `--repo-url <url>`: Remote Git repository URL (HTTPS or SSH)
+- `--branch <name>`: Branch to use when cloning a remote repository
+- `--ref <ref>`: Git ref (commit SHA or tag) to checkout after clone
+- `--stage-dir <dir>`: Staging directory for per-assistant working copies (default: `./stage`)
 - `--settings <path>`: Path to settings file (default: ./settings.json)
 - `--output <path>`: Output directory for results
 
+Exclusivity:
+- Exactly one of `--repo-url` or `--repo-path/--repository` must be provided. If neither is provided, Backbencher will prompt for a local repository path.
+
 #### `backbencher validate`
-Validate environment, settings, LLM connectivity, and CLI assistant availability (Augment CLI and Claude Code). If `--repository` is provided, validates that the path exists and is a directory (warns if not a Git repo). Otherwise validates access to the user’s home directory.
+Validate environment, settings, LLM connectivity, Git installation/connectivity, and CLI assistant availability (Augment CLI and Claude Code). If `--repo-url` or `--repo-path` is provided, performs remote connectivity checks or local path validation.
 
 **Options:**
+- `-r, --repository <path>`: Local path (alias of `--repo-path`)
+- `--repo-path <path>`: Local repository path to validate
+- `--repo-url <url>`: Remote Git repository URL to probe
+- `--branch <name>`: Branch to probe on the remote
+- `--ref <ref>`: Git ref to validate
+- `--stage-dir <dir>`: Staging directory (default: `./stage`)
 - `--settings <path>`: Path to settings file to validate
-- `--repository <path>`: Local repository path to validate (must exist; warns if not a Git repo)
 
 Validation behavior:
+- Git installation and version: requires git >= 2.30.0
+- Git connectivity: probes a public repo (chromium) and the provided `--repo-url` if set (private repos may require `GH_TOKEN`/`GIT_TOKEN` or SSH keys)
 - LLM connectivity test:
   - For `LLM_PROVIDER=anthropic`: performs a minimal POST to `/v1/messages`
   - For `openai-compatible` (default): calls `GET /models`
@@ -187,7 +202,35 @@ Validation behavior:
 - CLI assistants:
   - Checks availability of Augment CLI and Claude Code. If either is configured in `settings.json` but unavailable, validation fails.
 - Home directory:
-  - If no `--repository` is provided, validates access to the OS home directory
+  - If no local path options are provided, validates access to the OS home directory
+
+### Using a remote repository
+
+You can benchmark against a remote Git repository. Backbencher creates a per-assistant staging working copy under a staging directory and runs each assistant there. The staging folder is re-used across runs and must be cleaned manually to start fresh.
+
+Examples:
+
+```bash
+# HTTPS public repo, branch main
+backbencher benchmark --repo-url https://github.com/org/repo.git --branch main --stage-dir ./stage
+
+# SSH private repo
+backbencher validate --repo-url git@github.com:org/repo.git
+```
+
+Behavior:
+- Per-assistant working directory: `<stage-dir>/<agent_slug>` where `agent_slug` is derived from the assistant name.
+- Clean-state policy: if the per-assistant folder already exists, Backbencher warns and exits. Remove the folder to run again, or change `--stage-dir`.
+- Read-only discipline: source files are not modified by Backbencher; agents should write artifacts under `<stage-dir>/<agent_slug>/backbencher_output/<run_id>`.
+- Private repositories:
+  - HTTPS: set `GH_TOKEN` or `GIT_TOKEN` for non-interactive authentication. Tokens are injected via an HTTP header (not embedded in the URL).
+  - SSH: ensure your SSH agent has appropriate keys loaded.
+
+Troubleshooting:
+- Connectivity failures: check network, proxy, or token/SSH setup.
+- Branch not found: verify `--branch` exists on the remote.
+- Ref not found: verify `--ref` is a valid commit SHA or tag.
+
 
 #### `backbencher metrics`
 List available metrics and their descriptions. Use `--json` to get machine-readable metadata and metrics_config help.

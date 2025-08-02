@@ -185,7 +185,7 @@ class SettingsManager {
       num_prompts: 3,
       prompts: [
         "prompt1.md",
-        "prompt2.md", 
+        "prompt2.md",
         "prompt3.md"
       ],
       assistants: [
@@ -194,6 +194,13 @@ class SettingsManager {
       ],
       runs_per_prompt: 2,
       output_filename: "results.json",
+      // Repository source (optional here; can be provided via CLI)
+      // Exactly one of repo_url or repo_path should be set when using settings-only runs.
+      repo_url: "",
+      repo_path: "",
+      stage_dir: "./stage",
+      branch: "",
+      ref: "",
       metrics: [
         "response_time",
         "output_quality",
@@ -219,19 +226,26 @@ class SettingsManager {
     return Joi.object({
       num_prompts: Joi.number().integer().min(1).required()
         .description('Number of prompts to use'),
-      
+
       prompts: Joi.array().items(Joi.string().min(1)).min(1).required()
         .description('Array of prompt file paths'),
-      
+
       assistants: Joi.array().items(Joi.string().min(1)).min(1).required()
         .description('Array of assistant names'),
-      
+
       runs_per_prompt: Joi.number().integer().min(1).required()
         .description('Number of runs per prompt-assistant combination'),
-      
+
       output_filename: Joi.string().min(1).required()
         .description('Output filename for results'),
-      
+
+      // New repository fields (optional here; enforce xor at runtime or when provided)
+      repo_url: Joi.string().allow(''),
+      repo_path: Joi.string().allow(''),
+      stage_dir: Joi.string().default('./stage'),
+      branch: Joi.string().allow(''),
+      ref: Joi.string().allow(''),
+
       metrics: Joi.array().items(Joi.string().min(1)).min(1).required()
         .description('Array of metric names to measure'),
 
@@ -250,9 +264,16 @@ class SettingsManager {
       if (value.num_prompts !== value.prompts.length) {
         return helpers.error('custom.promptsLength');
       }
+      // If repo fields provided, enforce xor
+      const hasUrl = value.repo_url && value.repo_url.trim() !== '';
+      const hasPath = value.repo_path && value.repo_path.trim() !== '';
+      if (hasUrl && hasPath) {
+        return helpers.error('custom.repoXor');
+      }
       return value;
     }).messages({
-      'custom.promptsLength': 'num_prompts must match the length of prompts array'
+      'custom.promptsLength': 'num_prompts must match the length of prompts array',
+      'custom.repoXor': 'Exactly one of repo_url or repo_path may be set in settings.json'
     });
   }
 

@@ -29,38 +29,70 @@ class BenchmarkRunner {
     // Initialize metrics
     const metrics = await this.initializeMetrics(settings.metrics, settings.metrics_config || {});
     
+    // Prepare per-assistant working directories once
+    const { StagingManager } = require('../utils/StagingManager');
+    const staging = new StagingManager(this.options);
+    const stageDir = (this.options.stageDir || settings.stage_dir || './stage');
+    const repoUrlGlobal = this.options.repoUrl || settings.repo_url || '';
+    const repoPathGlobal = this.options.repoPath || this.options.repository || settings.repo_path || repositoryPath || '';
+    const branchGlobal = this.options.branch || settings.branch || '';
+    const refGlobal = this.options.ref || settings.ref || '';
+
+    const workingDirs = {};
+    for (const assistantName of settings.assistants) {
+      // Default: if neither repoUrl nor repoPath provided, use repositoryPath (interactive/local)
+      let workingDir = repoPathGlobal || repositoryPath;
+      if (repoUrlGlobal || repoPathGlobal) {
+        try {
+          workingDir = await staging.prepareForAssistant(assistantName, {
+            repo_url: repoUrlGlobal || undefined,
+            repo_path: repoUrlGlobal ? undefined : repoPathGlobal,
+            stage_dir: stageDir,
+            branch: branchGlobal || undefined,
+            ref: refGlobal || undefined,
+          });
+          this.logger.info(`Working directory for ${assistantName}: ${workingDir}`);
+        } catch (e) {
+          this.logger.error(`Failed to prepare staging for ${assistantName}: ${e.message}`);
+          throw e;
+        }
+      }
+      workingDirs[assistantName] = workingDir;
+    }
+
     // Process each prompt
     for (const promptFile of settings.prompts) {
       this.logger.info(`Processing prompt: ${promptFile}`);
-      
+
       // Process each assistant
       for (const assistantName of settings.assistants) {
         this.logger.info(`Testing assistant: ${assistantName}`);
-        
+
         const assistant = await this.adapterFactory.createAdapter(assistantName);
         const promptRuns = [];
-        
+        const workingDir = workingDirs[assistantName];
+
         // Run multiple times for this prompt-assistant combination
         for (let runId = 1; runId <= settings.runs_per_prompt; runId++) {
           currentRun++;
           const spinner = ora(`Run ${currentRun}/${totalRuns}: ${assistantName} on ${promptFile}`).start();
-          
+
           try {
             const runResult = await this.runSingleBenchmark(
               assistant,
               promptFile,
-              repositoryPath,
+              workingDir,
               metrics,
               runId
             );
-            
+
             promptRuns.push(runResult);
             spinner.succeed(`Completed run ${runId} for ${assistantName}`);
-            
+
           } catch (error) {
             spinner.fail(`Failed run ${runId} for ${assistantName}: ${error.message}`);
             this.logger.error(`Run failed:`, error.message);
-            
+
             // Add failed run with error info
             promptRuns.push({
               run_id: runId,
@@ -70,7 +102,7 @@ class BenchmarkRunner {
             });
           }
         }
-        
+
         // Add results for this prompt-assistant combination
         results.push({
           prompt: promptFile,
