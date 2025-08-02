@@ -13,7 +13,7 @@ describe('BenchmarkCLI formatSummary', function () {
         { run_id: 3, error: 'oops', response_time: null, output_quality: null }
       ]}
     ];
-    const txt = cli.formatSummary(results, settings);
+    const txt = cli.formatSummary(results, settings, { color: false });
     expect(txt).to.include('Summary per assistant:');
     expect(txt).to.include('- X: runs=3');
     expect(txt).to.include('completed=66.7%');

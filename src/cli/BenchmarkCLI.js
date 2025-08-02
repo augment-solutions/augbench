@@ -220,24 +220,37 @@ class BenchmarkCLI {
 
   /**
    * Format a short summary string for CLI output
+   * opts: { color?: boolean }
    */
-  formatSummary(results, settings) {
+  formatSummary(results, settings, opts = {}) {
+    const color = opts.color !== false; // default true
+    const pct = (n) => `${(n * 100).toFixed(1)}%`;
+    const c = (s, fn) => (color ? fn(String(s)) : String(s));
+    const rateColor = (r) => (r >= 0.8 ? chalk.green(pct(r)) : r >= 0.5 ? chalk.yellow(pct(r)) : chalk.red(pct(r)));
+    const rateColorInverse = (r) => (r >= 0.8 ? chalk.red(pct(r)) : r >= 0.5 ? chalk.yellow(pct(r)) : chalk.green(pct(r)));
     try {
       const summary = this.resultsStorage.withOptions
         ? this.resultsStorage.withOptions({ metrics_config: settings.metrics_config })
         : new ResultsStorage({ metrics_config: settings.metrics_config });
       const s = summary.generateSummary(results);
       const lines = [];
-      lines.push('Summary per assistant:');
+      lines.push(c('Summary per assistant:', chalk.bold));
       for (const [assistant, a] of Object.entries(s.assistants)) {
-        lines.push(
-          `- ${assistant}: runs=${a.runs}, completed=${(a.taskCompletionRate*100).toFixed(1)}%` +
-          `, agent_success=${(a.agentSuccessRate*100).toFixed(1)}%` +
-          `${a.avgResponseTime != null ? `, avg_time=${a.avgResponseTime}s` : ''}` +
-          `${a.avgQuality != null ? `, avg_quality=${a.avgQuality}` : ''}` +
-          `, format_ok=${(a.outputFormatSuccessRate*100).toFixed(1)}%` +
-          `, llm_err=${(a.llmCallErrorRate*100).toFixed(1)}%`
-        );
+        const completed = color ? rateColor(a.taskCompletionRate) : pct(a.taskCompletionRate);
+        const agentSuccess = color ? rateColor(a.agentSuccessRate) : pct(a.agentSuccessRate);
+        const formatOk = color ? rateColor(a.outputFormatSuccessRate) : pct(a.outputFormatSuccessRate);
+        const llmErr = color ? rateColorInverse(a.llmCallErrorRate) : pct(a.llmCallErrorRate);
+        const parts = [
+          `- ${c(assistant, chalk.cyan)}:`,
+          `${c('runs', chalk.dim)}=${a.runs}`,
+          `${c('completed', chalk.dim)}=${completed}`,
+          `${c('agent_success', chalk.dim)}=${agentSuccess}`,
+        ];
+        if (a.avgResponseTime != null) parts.push(`${c('avg_time', chalk.dim)}=${c(a.avgResponseTime + 's', chalk.magenta)}`);
+        if (a.avgQuality != null) parts.push(`${c('avg_quality', chalk.dim)}=${c(a.avgQuality, chalk.blue)}`);
+        parts.push(`${c('format_ok', chalk.dim)}=${formatOk}`);
+        parts.push(`${c('llm_err', chalk.dim)}=${llmErr}`);
+        lines.push(parts.join(' '));
       }
       return lines.join('\n');
     } catch (e) {
