@@ -2,7 +2,7 @@
  * Environment configuration management
  */
 
-const inquirer = require('inquirer');
+const { prompt } = require('../utils/inquirerCompat');
 const dotenv = require('dotenv');
 const path = require('path');
 const axios = require('axios');
@@ -71,7 +71,7 @@ class EnvironmentConfig {
   async promptForMissingVariables(missingVars) {
     this.logger.info('Please provide the missing environment variables:');
     
-    const answers = await inquirer.prompt(
+    const answers = await prompt(
       missingVars.map(varName => ({
         type: varName.includes('KEY') ? 'password' : 'input',
         name: varName,

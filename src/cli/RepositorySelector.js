@@ -2,7 +2,7 @@
  * Repository selection and validation module
  */
 
-const inquirer = require('inquirer');
+const { prompt } = require('../utils/inquirerCompat');
 const path = require('path');
 const { Logger } = require('../utils/Logger');
 const { FileSystem } = require('../utils/FileSystem');
@@ -22,7 +22,7 @@ class RepositorySelector {
 
     // If no path provided, prompt user
     if (!repositoryPath) {
-      const { path: userPath } = await inquirer.prompt([
+      const { path: userPath } = await prompt([
         {
           type: 'input',
           name: 'path',
@@ -67,7 +67,7 @@ class RepositorySelector {
     if (!(await this.fs.isGitRepository(repositoryPath))) {
       this.logger.warn(`Warning: ${repositoryPath} does not appear to be a git repository`);
       
-      const { proceed } = await inquirer.prompt([
+      const { proceed } = await prompt([
         {
           type: 'confirm',
           name: 'proceed',

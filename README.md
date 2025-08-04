@@ -14,7 +14,7 @@ Backbencher is designed to provide objective, reproducible benchmarks for AI cod
 - **Interactive CLI**: User-friendly prompts and progress indicators
 - **Robust Error Handling**: Graceful failure recovery and detailed error reporting
 - **Flexible Configuration**: JSON-based settings with validation
-- **Results Storage**: Structured JSON output with metadata and platform information
+- **Results Storage**: Structured JSON output with metadata and platform information; standardized location and naming; per-metric PNG charts
 
 ### Workflow
 
@@ -134,7 +134,7 @@ Edit `settings.json` to configure prompts, assistants, and metrics:
   "prompts": ["prompt1.md", "prompt2.md", "prompt3.md"],
   "assistants": ["Claude Code", "Augment CLI"],
   "runs_per_prompt": 2,
-  "output_filename": "results.json",
+  "output_filename": "bench_local",
   "metrics": [
     "response_time",
     "output_quality",
@@ -154,6 +154,16 @@ Edit `settings.json` to configure prompts, assistants, and metrics:
 ```bash
 backbencher benchmark
 ```
+
+##### Results persistence and charts
+- Results JSON is saved to `./results/<output_filename>.json` by default (override with `--output`)
+- `output_filename` must be a base name (do not include `.json`); it will be appended automatically
+- Per-metric PNG charts are generated as `./results/<output_filename>_<metric>.png` (requires optional dependency)
+- Overwrite behavior: files are overwritten; writes are atomic where practical
+- Missing/invalid values are represented as gaps in charts
+- Known ranges (e.g., `output_quality` 0–10) are clamped when applicable
+- Install chart dependencies to enable PNGs: `npm install chartjs-node-canvas chart.js @napi-rs/canvas`
+
 
 ### Commands
 
@@ -221,6 +231,12 @@ backbencher validate --repo-url git@github.com:org/repo.git
 Behavior:
 - Per-assistant working directory: `<stage-dir>/<agent_slug>` where `agent_slug` is derived from the assistant name.
 - Clean-state policy: if the per-assistant folder already exists, Backbencher warns and exits. Remove the folder to run again, or change `--stage-dir`.
+
+Charts:
+- If chart dependencies are installed, Backbencher will also generate PNG charts for each measured metric.
+- Files are named `<base>_<metric>.png` in the same output directory.
+- Use `--output` to place artifacts in a custom directory.
+
 - Read-only discipline: source files are not modified by Backbencher; agents should write artifacts under `<stage-dir>/<agent_slug>/backbencher_output/<run_id>`.
 - Private repositories:
   - HTTPS: set `GH_TOKEN` or `GIT_TOKEN` for non-interactive authentication. Tokens are injected via an HTTP header (not embedded in the URL).
@@ -228,6 +244,8 @@ Behavior:
 
 Troubleshooting:
 - Connectivity failures: check network, proxy, or token/SSH setup.
+- `--log-file <path>`: Append logs to this file while still logging to console
+
 - Branch not found: verify `--branch` exists on the remote.
 - Ref not found: verify `--ref` is a valid commit SHA or tag.
 
@@ -243,6 +261,7 @@ Options:
 - `-q, --quiet`: Suppress non-essential output
 - `--config <path>`: Path to configuration file
 - `--output <path>`: Output directory for results
+- `--log-file <path>`: Append logs to a file while still logging to console
 
 ### Configuration
 
@@ -258,7 +277,6 @@ LLM_OPENAI_ENDPOINT=
 LLM_API_KEY=
 
 # Optional: Select model id, e.g., anthropic/claude-3.5-sonnet-20241022 (provider-dependent)
-# Defaults to gpt-3.5-turbo if not set
 LLM_MODEL=
 
 # Optional: Provider hint (openai-compatible | anthropic). Default: openai-compatible
@@ -297,7 +315,7 @@ Note on repository paths:
     "Augment CLI"
   ],
   "runs_per_prompt": 2,
-  "output_filename": "results.json",
+  "output_filename": "bench_local",
   "metrics": [
     "response_time",
     "output_quality"
@@ -449,7 +467,7 @@ ORDER BY o.created_at DESC;
   ],
   "assistants": ["Claude Code", "Augment CLI"],
   "runs_per_prompt": 2,
-  "output_filename": "results.json",
+  "output_filename": "bench_local",
   "metrics": [
     "response_time",
     "output_quality",

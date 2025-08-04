@@ -36,13 +36,17 @@ class MeasurableMetric extends BaseMetric {
    * @returns {Promise<number>} - The measured value
    */
   async measure(output, context = {}) {
+    this.logger && this.logger.debug && this.logger.debug(`[metric:${this.name}] Measuring (MeasurableMetric). Context keys: ${Object.keys(context || {}).join(', ')}`);
     const rawValue = await this.performMeasurement(output, context);
-    
+    this.logger && this.logger.debug && this.logger.debug(`[metric:${this.name}] Raw measured value: ${rawValue}`);
+
     if (!this.validateValue(rawValue)) {
       throw new Error(`Invalid measurement value: ${rawValue}`);
     }
-    
-    return this.formatMeasuredValue(rawValue);
+
+    const formatted = this.formatMeasuredValue(rawValue);
+    this.logger && this.logger.debug && this.logger.debug(`[metric:${this.name}] Formatted measured value: ${formatted}`);
+    return formatted;
   }
 
   /**

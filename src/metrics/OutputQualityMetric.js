@@ -10,7 +10,6 @@ class OutputQualityMetric extends AssessableMetric {
     super(name, {
       description: 'Assesses the quality of AI assistant output on a scale of 1-10',
       unit: 'score',
-      model: options.model || 'gpt-3.5-turbo',
       ...options
     });
     

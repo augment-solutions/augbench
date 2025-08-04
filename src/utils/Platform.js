@@ -180,15 +180,15 @@ class Platform {
       const testCommand = this.isWindows ? 'where' : 'which';
       const testArgs = [command];
       
-      const process = this.spawnProcess(testCommand, testArgs, {
+      const child = this.spawnProcess(testCommand, testArgs, {
         stdio: ['ignore', 'ignore', 'ignore']
       });
-      
-      process.on('close', (code) => {
+
+      child.on('close', (code) => {
         resolve(code === 0);
       });
-      
-      process.on('error', () => {
+
+      child.on('error', () => {
         resolve(false);
       });
     });
