@@ -49,6 +49,24 @@ class FileSystem {
   }
 
   /**
+   * Atomically write JSON by writing to a temp file and renaming
+   */
+  async writeJSONAtomic(filePath, data, options = {}) {
+    const dir = path.dirname(filePath);
+    const base = path.basename(filePath);
+    const tmp = path.join(dir, `.${base}.tmp-${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
+    try {
+      const jsonString = JSON.stringify(data, null, options.indent || 2);
+      await fs.writeFile(tmp, jsonString, 'utf8');
+      await fs.move(tmp, filePath, { overwrite: true });
+      this.logger.debug(`Atomically written JSON to ${filePath}`);
+    } catch (error) {
+      try { await fs.remove(tmp); } catch (_) {}
+      throw new Error(`Failed to atomically write JSON file ${filePath}: ${error.message}`);
+    }
+  }
+
+  /**
    * Read a text file
    */
   async readText(filePath) {
@@ -68,6 +86,35 @@ class FileSystem {
       this.logger.debug(`Written text to ${filePath}`);
     } catch (error) {
       throw new Error(`Failed to write file ${filePath}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Write binary data (Buffer) to a file
+   */
+  async writeBinary(filePath, buffer) {
+    try {
+      await fs.writeFile(filePath, buffer);
+      this.logger.debug(`Written binary to ${filePath}`);
+    } catch (error) {
+      throw new Error(`Failed to write binary file ${filePath}: ${error.message}`);
+    }
+  }
+
+  /**
+   * Atomically write binary (Buffer) by temp file then rename (overwrite)
+   */
+  async writeBinaryAtomic(filePath, buffer) {
+    const dir = path.dirname(filePath);
+    const base = path.basename(filePath);
+    const tmp = path.join(dir, `.${base}.tmp-${Date.now()}-${Math.random().toString(36).slice(2,8)}`);
+    try {
+      await fs.writeFile(tmp, buffer);
+      await fs.move(tmp, filePath, { overwrite: true });
+      this.logger.debug(`Atomically written binary to ${filePath}`);
+    } catch (error) {
+      try { await fs.remove(tmp); } catch (_) {}
+      throw new Error(`Failed to atomically write binary file ${filePath}: ${error.message}`);
     }
   }
 

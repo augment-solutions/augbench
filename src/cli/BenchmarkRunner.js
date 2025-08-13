@@ -2,7 +2,7 @@
  * Benchmark execution engine
  */
 
-const ora = require('ora');
+const { getOra } = require('../utils/oraCompat');
 const chalk = require('chalk');
 const { Logger } = require('../utils/Logger');
 const { MetricsFactory } = require('../metrics/MetricsFactory');
@@ -75,6 +75,7 @@ class BenchmarkRunner {
         // Run multiple times for this prompt-assistant combination
         for (let runId = 1; runId <= settings.runs_per_prompt; runId++) {
           currentRun++;
+          const ora = await getOra();
           const spinner = ora(`Run ${currentRun}/${totalRuns}: ${assistantName} on ${promptFile}`).start();
 
           try {
@@ -127,7 +128,7 @@ class BenchmarkRunner {
     
     const endTime = Date.now();
     const responseTime = (endTime - startTime) / 1000; // Convert to seconds
-    
+
     // Measure all metrics
     const metricResults = {};
     const evaluatorErrors = [];
@@ -136,7 +137,10 @@ class BenchmarkRunner {
         metricResults[metricName] = await metric.measure(output, {
           prompt: promptFile,
           assistant: assistant.name,
-          repositoryPath
+          repositoryPath,
+          startTime,
+          endTime,
+          responseTime
         });
       } catch (error) {
         this.logger.warn(`Failed to measure ${metricName}: ${error.message}`);

@@ -2,9 +2,9 @@
  * Main CLI interface for the Backbencher tool
  */
 
-const inquirer = require('inquirer');
+const { prompt } = require('../utils/inquirerCompat');
 const chalk = require('chalk');
-const ora = require('ora');
+const { getOra } = require('../utils/oraCompat');
 const { Logger } = require('../utils/Logger');
 const { FileSystem } = require('../utils/FileSystem');
 const { ErrorHandler } = require('../utils/ErrorHandler');
@@ -95,7 +95,7 @@ class BenchmarkCLI {
 
       // Step 7: Results Storage
       this.logger.step(7, 8, 'Results Storage');
-      await this.saveResults(results, settings.output_filename);
+      await this.saveResults(results, settings.output_filename, settings);
 
       // Step 8: Completion
       this.logger.step(8, 8, 'Completion');
@@ -240,7 +240,7 @@ class BenchmarkCLI {
     this.logger.info(`Runs per prompt: ${settings.runs_per_prompt}`);
     this.logger.info(`Output file: ${settings.output_filename}`);
 
-    const { confirmed } = await inquirer.prompt([
+    const { confirmed } = await prompt([
       {
         type: 'confirm',
         name: 'confirmed',
@@ -295,12 +295,20 @@ class BenchmarkCLI {
   /**
    * Save benchmark results to file
    */
-  async saveResults(results, outputFilename) {
+  async saveResults(results, outputFilename, settings) {
     const metadata = {
       platform: this.platform.getPlatformInfo(),
       timestamp: new Date().toISOString(),
       settings // include full settings (contains metrics_config)
     };
+
+    // Validate output_filename rules before writing
+    if (typeof outputFilename !== 'string' || !outputFilename.trim()) {
+      throw new Error('settings.output_filename must be a non-empty string');
+    }
+    if (outputFilename.toLowerCase().endsWith('.json')) {
+      throw new Error('settings.output_filename must not include a .json suffix; it will be added automatically');
+    }
 
     await this.resultsStorage.saveResults(results, outputFilename, metadata);
   }

@@ -1,8 +1,8 @@
 {
-  "num_prompts": 2,
+  "num_prompts": 5,
   "prompts": [
     "prompt_voyager_1.md",
-    "prompt_voyager_2.md",
+    "prompt_voyager_2.md", 
     "prompt_voyager_3.md",
     "prompt_voyager_4.md",
     "prompt_voyager_5.md"
@@ -12,11 +12,11 @@
     "Augment CLI"
   ],
   "runs_per_prompt": 2,
-  "output_filename": "voyager_benchmark_results2",
+  "output_filename": "voyager_benchmark_results.json",
   "metrics": [
     "response_time",
     "output_quality",
-    "steps_per_task",
+    "output_format_success", 
     "instruction_adherence",
     "context_adherence"
   ],

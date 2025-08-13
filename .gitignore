@@ -3,6 +3,9 @@ backbencher.md
 backbencher1.md
 metrics.md
 .env
+results
+prompt_*.md
+voyager_*.json
 .DS_Store
 .gitkeep
 

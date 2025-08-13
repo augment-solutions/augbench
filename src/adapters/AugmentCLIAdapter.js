@@ -22,11 +22,13 @@ class AugmentCLIAdapter extends BaseAdapter {
    */
   async execute(promptFile, repositoryPath) {
     await this.validateRepository(repositoryPath);
-    const promptContent = await this.readPrompt(promptFile);
-    
+    // Read once for validation/logging and compute absolute path for CLI
+    await this.readPrompt(promptFile);
+    const promptPath = this.fs.getAbsolutePath(promptFile);
+
     return this.executeWithRetry(async () => {
       return this.executeWithTimeout(
-        this.runAugmentCLI(promptContent, repositoryPath)
+        this.runAugmentCLI(promptPath, repositoryPath)
       );
     }, 'Augment CLI execution');
   }
@@ -38,17 +40,18 @@ class AugmentCLIAdapter extends BaseAdapter {
    * @param {string} repositoryPath - Path to the repository
    * @returns {Promise<string>} - Command output
    */
-  async runAugmentCLI(promptContent, repositoryPath) {
+  async runAugmentCLI(promptPath, repositoryPath) {
     return new Promise((resolve, reject) => {
       const args = [
         ...this.args,
-        '--cwd', repositoryPath,
-        '--prompt', promptContent
+        '--workspace-root', repositoryPath,
+        '--instruction-file', promptPath,
+        '--print'
       ];
       
       this.logger.debug(`Executing: ${this.command} ${args.join(' ')}`);
       
-      const process = spawn(this.command, args, {
+      const child = spawn(this.command, args, {
         cwd: repositoryPath,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env }
@@ -57,15 +60,15 @@ class AugmentCLIAdapter extends BaseAdapter {
       let stdout = '';
       let stderr = '';
       
-      process.stdout.on('data', (data) => {
+      child.stdout.on('data', (data) => {
         stdout += data.toString();
       });
       
-      process.stderr.on('data', (data) => {
+      child.stderr.on('data', (data) => {
         stderr += data.toString();
       });
       
-      process.on('close', (code) => {
+      child.on('close', (code) => {
         if (code === 0) {
           this.logger.debug(`Augment CLI completed successfully`);
           resolve(stdout.trim());
@@ -76,16 +79,12 @@ class AugmentCLIAdapter extends BaseAdapter {
         }
       });
       
-      process.on('error', (error) => {
+      child.on('error', (error) => {
         this.logger.error(`Augment CLI process error: ${error.message}`);
         reject(new Error(`Failed to start Augment CLI: ${error.message}`));
       });
       
-      // Send prompt to stdin if needed
-      if (process.stdin.writable) {
-        process.stdin.write(promptContent);
-        process.stdin.end();
-      }
+      // Using --instruction-file, no need to write to stdin
     });
   }
 
@@ -131,22 +130,22 @@ class AugmentCLIAdapter extends BaseAdapter {
     return new Promise((resolve, reject) => {
       const [cmd, ...args] = command;
       
-      const process = spawn(cmd, args, {
+      const child = spawn(cmd, args, {
         stdio: ['pipe', 'pipe', 'pipe']
       });
       
       let stdout = '';
       let stderr = '';
       
-      process.stdout.on('data', (data) => {
+      child.stdout.on('data', (data) => {
         stdout += data.toString();
       });
       
-      process.stderr.on('data', (data) => {
+      child.stderr.on('data', (data) => {
         stderr += data.toString();
       });
       
-      process.on('close', (code) => {
+      child.on('close', (code) => {
         if (code === 0) {
           resolve(stdout);
         } else {
@@ -154,7 +153,7 @@ class AugmentCLIAdapter extends BaseAdapter {
         }
       });
       
-      process.on('error', (error) => {
+      child.on('error', (error) => {
         reject(new Error(`Failed to run command: ${error.message}`));
       });
     });

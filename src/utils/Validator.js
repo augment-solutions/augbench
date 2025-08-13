@@ -251,7 +251,13 @@ class Validator {
         type: 'string',
         string: { minLength: 1 }
       });
-      
+      if (typeof settings.output_filename !== 'string' || !settings.output_filename.trim()) {
+        throw new Error('settings.output_filename must be a non-empty string');
+      }
+      if (settings.output_filename.toLowerCase().endsWith('.json')) {
+        throw new Error('settings.output_filename must not include a .json suffix; it will be added automatically');
+      }
+
       // Validate metrics array
       this.errorHandler.validateInput(settings.metrics, {
         required: true,

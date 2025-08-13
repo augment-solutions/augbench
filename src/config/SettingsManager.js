@@ -2,7 +2,7 @@
  * Settings management for benchmark configuration
  */
 
-const inquirer = require('inquirer');
+const { prompt } = require('../utils/inquirerCompat');
 const path = require('path');
 const Joi = require('joi');
 const { Logger } = require('../utils/Logger');
@@ -36,7 +36,7 @@ class SettingsManager {
    * Create settings.json interactively
    */
   async createSettingsInteractively() {
-    const { createNow } = await inquirer.prompt([
+    const { createNow } = await prompt([
       {
         type: 'confirm',
         name: 'createNow',
@@ -49,7 +49,7 @@ class SettingsManager {
       await this.createTemplateSettings();
       this.logger.info('Please edit settings.json with your specific configuration');
       
-      const { proceed } = await inquirer.prompt([
+      const { proceed } = await prompt([
         {
           type: 'confirm',
           name: 'proceed',
@@ -70,7 +70,7 @@ class SettingsManager {
    * Ask user to confirm if settings have been updated
    */
   async confirmSettingsUpdate() {
-    const { updated } = await inquirer.prompt([
+    const { updated } = await prompt([
       {
         type: 'confirm',
         name: 'updated',
@@ -193,7 +193,7 @@ class SettingsManager {
         "Augment CLI"
       ],
       runs_per_prompt: 2,
-      output_filename: "results.json",
+      output_filename: "bench_local",
       // Repository source (optional here; can be provided via CLI)
       // Exactly one of repo_url or repo_path should be set when using settings-only runs.
       repo_url: "",

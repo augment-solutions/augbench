@@ -2,16 +2,19 @@
  * Base abstract class for all metrics
  */
 
+const { Logger } = require('../utils/Logger');
+
 class BaseMetric {
   constructor(name, options = {}) {
     if (this.constructor === BaseMetric) {
       throw new Error('BaseMetric is an abstract class and cannot be instantiated directly');
     }
-    
+
     this.name = name;
     this.options = options;
     this.description = options.description || '';
     this.unit = options.unit || '';
+    this.logger = new Logger(options);
   }
 
   /**

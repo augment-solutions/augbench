@@ -9,19 +9,29 @@ const { Logger } = require('../utils/Logger');
 
 class AssessableMetric extends BaseMetric {
   constructor(name, options = {}) {
-    if (this.constructor === AssessableMetric) {
+    // Call BaseMetric constructor first to initialize `this`
+    super(name, options);
+
+    // Enforce abstract class behavior without touching `this` before super
+    if (new.target === AssessableMetric) {
       throw new Error('AssessableMetric is an abstract class and cannot be instantiated directly');
     }
-    
-    super(name, options);
+
     this.logger = new Logger(options);
     this.endpoint = process.env.LLM_OPENAI_ENDPOINT;
     this.apiKey = process.env.LLM_API_KEY;
     this.provider = (options.provider || process.env.LLM_PROVIDER || 'openai-compatible').toLowerCase();
     this.anthropicVersion = options.anthropicVersion || process.env.LLM_ANTHROPIC_VERSION || '2023-06-01';
-    this.model = options.model || process.env.LLM_MODEL || 'gpt-3.5-turbo';
+    this.model = options.model || process.env.LLM_MODEL; // no hardcoded default; rely on env/options
     this.timeout = options.timeout || 30000;
     this.maxRetries = options.maxRetries || 3;
+
+    // Metrics config and truncation/logging controls
+    this.metricsConfig = options.metrics_config || {};
+    this.evalLogMaxKB = this.metricsConfig.eval_log_max_kb ?? options.evalLogMaxKB ?? 2; // default 2KB
+    this.evalLogTruncate = this.metricsConfig.eval_log_truncate ?? options.evalLogTruncate ?? 'tail'; // 'head' | 'tail'
+    this.evalInputMaxKB = this.metricsConfig.eval_input_kb ?? options.evalInputMaxKB ?? null; // null => no truncation
+    this.evalInputTruncate = this.metricsConfig.eval_input_truncate ?? options.evalInputTruncate ?? 'tail';
   }
 
   /**
@@ -59,14 +69,32 @@ class AssessableMetric extends BaseMetric {
       throw new Error('LLM endpoint and API key are required for assessable metrics');
     }
 
-    const prompt = this.createAssessmentPrompt(output, context);
+    // Optionally truncate the output before building the prompt
+    let effectiveOutput = output;
+    if (this.evalInputMaxKB != null) {
+      const lim = Math.max(1, Number(this.evalInputMaxKB)) * 1024;
+      effectiveOutput = this.evalInputTruncate === 'head' ? String(output).slice(0, lim) : String(output).slice(-lim);
+      this.logger.debug(`[metric:${this.name}] Truncated eval input to ${lim} bytes (${this.evalInputTruncate})`);
+    }
+
+    const prompt = this.createAssessmentPrompt(effectiveOutput, context);
+
+    const logLimit = Math.max(1, Number(this.evalLogMaxKB || 2)) * 1024;
+    const slicer = (s) => this.evalLogTruncate === 'head' ? String(s).slice(0, logLimit) : String(s).slice(-logLimit);
+    const logWhere = this.evalLogTruncate === 'head' ? 'first' : 'last';
+
+    this.logger.debug(`[metric:${this.name}] LLM input prompt (${logWhere} ${logLimit}B):\n` + slicer(prompt));
+
     const response = await this.callLLM(prompt);
+    this.logger.debug(`[metric:${this.name}] LLM raw response (${logWhere} ${logLimit}B):\n` + slicer(response));
+
     const assessedValue = this.parseAssessmentResponse(response);
-    
+    this.logger.debug(`[metric:${this.name}] Parsed assessment value: ${assessedValue}`);
+
     if (!this.validateValue(assessedValue)) {
       throw new Error(`Invalid assessment value: ${assessedValue}`);
     }
-    
+
     return assessedValue;
   }
 
@@ -151,8 +179,17 @@ class AssessableMetric extends BaseMetric {
         
       } catch (error) {
         lastError = error;
-        this.logger.warn(`LLM assessment attempt ${attempt} failed: ${error.message}`);
-        
+        const status = error?.response?.status;
+        let body = '';
+        try {
+          const data = error?.response?.data;
+          if (typeof data === 'string') body = data;
+          else if (data) body = JSON.stringify(data);
+        } catch (_) {}
+        const snippet = body ? ` - ${String(body).slice(0, 500)}` : '';
+        const statusText = status ? ` (status ${status})` : '';
+        this.logger.warn(`LLM assessment attempt ${attempt} failed: ${error.message}${statusText}${snippet}`);
+
         if (attempt < this.maxRetries) {
           // Exponential backoff
           const delay = Math.pow(2, attempt) * 1000;

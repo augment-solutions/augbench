@@ -20,6 +20,14 @@ function metricsConfigHelp() {
     output_format: {
       regex: 'Optional string regex to validate assistant output (pass=1, fail=0)',
       json_schema_path: 'Optional path to a JSON Schema file; output must be valid JSON matching schema'
+    },
+    assessable: {
+      eval_input_kb: 'Optional number of KB of assistant output to include in evaluator LLM prompt (default: full)',
+      eval_input_truncate: "'tail' or 'head' (default 'tail')"
+    },
+    assessable_log: {
+      eval_log_max_kb: 'Optional number of KB to show from LLM prompt/response in verbose logs (default: 2)',
+      eval_log_truncate: "'tail' or 'head' (default 'tail')"
     }
   };
 }
@@ -37,7 +45,8 @@ async function main() {
       .option('-v, --verbose', 'Enable verbose logging')
       .option('-q, --quiet', 'Suppress non-essential output')
       .option('--config <path>', 'Path to configuration file')
-      .option('--output <path>', 'Output directory for results');
+      .option('--output <path>', 'Output directory for results')
+      .option('--log-file <path>', 'Write logs to this file (append)');
 
     // Add benchmark command
     program
@@ -59,6 +68,7 @@ async function main() {
           quiet: program.opts().quiet,
           config: program.opts().config,
           output: program.opts().output,
+          logFile: program.opts().logFile || options.logFile,
           ...options
         });
 

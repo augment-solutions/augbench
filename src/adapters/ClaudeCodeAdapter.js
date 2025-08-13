@@ -23,7 +23,7 @@ class ClaudeCodeAdapter extends BaseAdapter {
   async execute(promptFile, repositoryPath) {
     await this.validateRepository(repositoryPath);
     const promptContent = await this.readPrompt(promptFile);
-    
+
     return this.executeWithRetry(async () => {
       return this.executeWithTimeout(
         this.runClaudeCode(promptContent, repositoryPath)
@@ -41,14 +41,12 @@ class ClaudeCodeAdapter extends BaseAdapter {
   async runClaudeCode(promptContent, repositoryPath) {
     return new Promise((resolve, reject) => {
       const args = [
-        ...this.args,
-        '--context', repositoryPath,
-        '--prompt', promptContent
+        ...this.args
       ];
       
       this.logger.debug(`Executing: ${this.command} ${args.join(' ')}`);
       
-      const process = spawn(this.command, args, {
+      const child = spawn(this.command, args, {
         cwd: repositoryPath,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env }
@@ -57,15 +55,15 @@ class ClaudeCodeAdapter extends BaseAdapter {
       let stdout = '';
       let stderr = '';
       
-      process.stdout.on('data', (data) => {
+      child.stdout.on('data', (data) => {
         stdout += data.toString();
       });
       
-      process.stderr.on('data', (data) => {
+      child.stderr.on('data', (data) => {
         stderr += data.toString();
       });
       
-      process.on('close', (code) => {
+      child.on('close', (code) => {
         if (code === 0) {
           this.logger.debug(`Claude Code completed successfully`);
           resolve(stdout.trim());
@@ -76,15 +74,15 @@ class ClaudeCodeAdapter extends BaseAdapter {
         }
       });
       
-      process.on('error', (error) => {
+      child.on('error', (error) => {
         this.logger.error(`Claude Code process error: ${error.message}`);
         reject(new Error(`Failed to start Claude Code: ${error.message}`));
       });
-      
-      // Send prompt to stdin if needed
-      if (process.stdin.writable) {
-        process.stdin.write(promptContent);
-        process.stdin.end();
+
+      // Write prompt to stdin
+      if (child.stdin && child.stdin.writable) {
+        child.stdin.write(promptContent);
+        child.stdin.end();
       }
     });
   }
@@ -131,22 +129,22 @@ class ClaudeCodeAdapter extends BaseAdapter {
     return new Promise((resolve, reject) => {
       const [cmd, ...args] = command;
       
-      const process = spawn(cmd, args, {
+      const child = spawn(cmd, args, {
         stdio: ['pipe', 'pipe', 'pipe']
       });
       
       let stdout = '';
       let stderr = '';
       
-      process.stdout.on('data', (data) => {
+      child.stdout.on('data', (data) => {
         stdout += data.toString();
       });
       
-      process.stderr.on('data', (data) => {
+      child.stderr.on('data', (data) => {
         stderr += data.toString();
       });
       
-      process.on('close', (code) => {
+      child.on('close', (code) => {
         if (code === 0) {
           resolve(stdout);
         } else {
@@ -154,7 +152,7 @@ class ClaudeCodeAdapter extends BaseAdapter {
         }
       });
       
-      process.on('error', (error) => {
+      child.on('error', (error) => {
         reject(new Error(`Failed to run command: ${error.message}`));
       });
     });

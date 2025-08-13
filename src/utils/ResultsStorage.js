@@ -22,11 +22,22 @@ class ResultsStorage {
    * @returns {Promise<string>} - Path to saved file
    */
   async saveResults(results, outputFilename, metadata = {}) {
-    const outputPath = this.fs.getAbsolutePath(outputFilename);
-    
     // Validate results format
     this.validateResults(results);
-    
+
+    // Build standardized output directory and base name
+    const outputDir = this.options.output ? this.fs.getAbsolutePath(this.options.output) : this.fs.getAbsolutePath('./results');
+    await this.fs.ensureDir(outputDir);
+
+    // Sanitize base name (outputFilename is a base without .json per validation rules)
+    const baseRaw = String(outputFilename || '').trim();
+    const sanitized = baseRaw
+      .replace(/[^A-Za-z0-9._-]/g, '_')
+      .replace(/^[\s.]+|[\s.]+$/g, '');
+    const baseName = sanitized.length ? sanitized : 'results';
+
+    const outputPath = path.join(outputDir, `${baseName}.json`);
+
     // Create results object with metadata
     const resultsObject = {
       metadata: {
@@ -37,16 +48,69 @@ class ResultsStorage {
       },
       results: results
     };
-    
-    // Ensure output directory exists
-    const outputDir = path.dirname(outputPath);
-    await this.fs.ensureDir(outputDir);
-    
-    // Save results
-    await this.fs.writeJSON(outputPath, resultsObject, { indent: 2 });
-    
+
+    // Save results atomically (overwrite allowed)
+    await this.fs.writeJSONAtomic(outputPath, resultsObject, { indent: 2 });
+
+    // Generate charts for metrics actually measured
+    const metrics = this.discoverMeasuredMetrics(results);
+    const { Charts } = require('./Charts');
+    const charts = new Charts(this.options);
+    const unitsMap = { response_time: 's' };
+    const rangesMap = { output_quality: [0, 10] };
+    let pngPaths = [];
+    try {
+      pngPaths = await charts.generateMetricCharts(results, metrics, {
+        width: 1200,
+        height: 800,
+        dpi: 192,
+        outputDir,
+        baseName,
+        unitsMap,
+        rangesMap
+      });
+    } catch (e) {
+      this.logger.warn(`Failed to generate charts: ${e.message}`);
+    }
+
+    // Logging
+    const numRuns = this.calculateTotalRuns(results);
+    const numAgents = new Set(results.map(r => r.assistant)).size;
     this.logger.success(`Results saved to: ${outputPath}`);
+    if (pngPaths.length) {
+      this.logger.info(`Generated ${pngPaths.length} PNG chart(s) for metrics: ${metrics.join(', ')}`);
+      pngPaths.forEach(p => this.logger.info(`Chart: ${p}`));
+    } else {
+      this.logger.info('No PNG charts generated.');
+    }
+    this.logger.info(`Summary: runs=${numRuns}, agents=${numAgents}`);
+
     return outputPath;
+  }
+
+  /**
+   * Determine metrics present in results
+   */
+  discoverMeasuredMetrics(results) {
+    const metricSet = new Set();
+    for (const entry of results) {
+      for (const run of entry.runs || []) {
+        Object.entries(run || {}).forEach(([k, v]) => {
+          if (k === 'run_id' || k === 'error' || k.startsWith('_')) return;
+          if (typeof v === 'number' || v === null || v === undefined) {
+            metricSet.add(k);
+          }
+        });
+      }
+    }
+    // Ensure response_time appears first if present
+    const arr = Array.from(metricSet);
+    arr.sort((a, b) => a.localeCompare(b));
+    if (metricSet.has('response_time')) {
+      const filtered = arr.filter(m => m !== 'response_time');
+      return ['response_time', ...filtered];
+    }
+    return arr;
   }
 
   /**
