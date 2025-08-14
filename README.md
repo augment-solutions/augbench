@@ -14,6 +14,7 @@ Backbencher is designed to provide objective, reproducible benchmarks for AI cod
 - **Interactive CLI**: User-friendly prompts and progress indicators
 - **Robust Error Handling**: Graceful failure recovery and detailed error reporting
 - **Flexible Configuration**: JSON-based settings with validation
+- **Parallel Execution**: Configurable concurrent runs per agent for faster benchmarking
 - **Results Storage**: Structured JSON output with metadata and platform information; standardized location and naming; per-metric PNG charts
 
 ### Workflow
@@ -134,6 +135,7 @@ Edit `settings.json` to configure prompts, assistants, and metrics:
   "prompts": ["prompt1.md", "prompt2.md", "prompt3.md"],
   "assistants": ["Claude Code", "Augment CLI"],
   "runs_per_prompt": 2,
+  "parallel_runs": 1,
   "output_filename": "bench_local",
   "metrics": [
     "response_time",
@@ -158,9 +160,10 @@ backbencher benchmark
 ##### Results persistence and charts
 - Results JSON is saved to `./results/<output_filename>.json` by default (override with `--output`)
 - `output_filename` must be a base name (do not include `.json`); it will be appended automatically
-- Per-metric PNG charts are generated as `./results/<output_filename>_<metric>.png` (requires optional dependency)
+- Per-metric PNG bar charts are generated as `./results/<output_filename>_<metric>.png` (requires optional dependency)
+- Bar charts show average values per prompt, excluding null values and failed runs
+- Augment CLI data is displayed in green, Claude Code data in orange
 - Overwrite behavior: files are overwritten; writes are atomic where practical
-- Missing/invalid values are represented as gaps in charts
 - Known ranges (e.g., `output_quality` 0–10) are clamped when applicable
 - Install chart dependencies to enable PNGs: `npm install chartjs-node-canvas chart.js @napi-rs/canvas`
 
@@ -233,7 +236,8 @@ Behavior:
 - Clean-state policy: if the per-assistant folder already exists, Backbencher warns and exits. Remove the folder to run again, or change `--stage-dir`.
 
 Charts:
-- If chart dependencies are installed, Backbencher will also generate PNG charts for each measured metric.
+- If chart dependencies are installed, Backbencher will generate PNG bar charts for each measured metric.
+- Bar charts display average values per prompt (x-axis) for each agent, excluding null values and failed runs.
 - Files are named `<base>_<metric>.png` in the same output directory.
 - Use `--output` to place artifacts in a custom directory.
 
@@ -315,6 +319,7 @@ Note on repository paths:
     "Augment CLI"
   ],
   "runs_per_prompt": 2,
+  "parallel_runs": 1,
   "output_filename": "bench_local",
   "metrics": [
     "response_time",
@@ -322,6 +327,25 @@ Note on repository paths:
   ]
 }
 ```
+
+**Settings Parameters:**
+- `num_prompts`: Number of prompts to use (must match length of prompts array)
+- `prompts`: Array of prompt file paths
+- `assistants`: Array of AI assistant names to benchmark
+- `runs_per_prompt`: Number of times to run each prompt-assistant combination
+- `parallel_runs`: Maximum concurrent runs per agent (default: 1). Set higher for faster benchmarking
+- `output_filename`: Base filename for results (without .json extension)
+- `metrics`: Array of metrics to measure
+- `metrics_config`: Configuration for specific metrics
+
+### Parallel Execution
+
+Backbencher supports parallel execution of benchmark runs to speed up the benchmarking process:
+
+- Set `parallel_runs: 1` for sequential execution (default)
+- Set `parallel_runs: 4` to run up to 4 concurrent benchmarks per agent
+- The system automatically manages resources and prevents overload
+- See [docs/parallel-execution.md](docs/parallel-execution.md) for detailed information
 
 ### Results Format
 

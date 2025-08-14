@@ -221,6 +221,8 @@ class BenchmarkCLI {
       this.logger.info(`- Prompts: ${settings.num_prompts}`);
       this.logger.info(`- Assistants: ${settings.assistants.join(', ')}`);
       this.logger.info(`- Runs per prompt: ${settings.runs_per_prompt}`);
+      this.logger.info(`- Parallel runs: ${settings.parallel_runs || 1}`);
+      this.logger.info(`- Parallel agents: ${settings.parallel_agents !== false ? 'enabled' : 'disabled'}`);
       this.logger.info(`- Output file: ${settings.output_filename}`);
 
     } catch (error) {
@@ -238,6 +240,8 @@ class BenchmarkCLI {
     this.logger.info(`Prompts: ${settings.prompts.join(', ')}`);
     this.logger.info(`Assistants: ${settings.assistants.join(', ')}`);
     this.logger.info(`Runs per prompt: ${settings.runs_per_prompt}`);
+    this.logger.info(`Parallel runs: ${settings.parallel_runs || 1}`);
+    this.logger.info(`Parallel agents: ${settings.parallel_agents !== false ? 'enabled' : 'disabled'}`);
     this.logger.info(`Output file: ${settings.output_filename}`);
 
     const { confirmed } = await prompt([

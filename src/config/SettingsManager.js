@@ -193,6 +193,8 @@ class SettingsManager {
         "Augment CLI"
       ],
       runs_per_prompt: 2,
+      parallel_runs: 1,
+      parallel_agents: true,
       output_filename: "bench_local",
       // Repository source (optional here; can be provided via CLI)
       // Exactly one of repo_url or repo_path should be set when using settings-only runs.
@@ -235,6 +237,12 @@ class SettingsManager {
 
       runs_per_prompt: Joi.number().integer().min(1).required()
         .description('Number of runs per prompt-assistant combination'),
+
+      parallel_runs: Joi.number().integer().min(1).default(1)
+        .description('Maximum number of concurrent runs per agent (default: 1)'),
+
+      parallel_agents: Joi.boolean().default(true)
+        .description('Whether to run multiple agents in parallel for the same prompt (default: true)'),
 
       output_filename: Joi.string().min(1).required()
         .description('Output filename for results'),

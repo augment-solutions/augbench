@@ -26,7 +26,7 @@ class Charts {
   }
 
   /**
-   * Generate line charts for metrics.
+   * Generate bar charts for metrics.
    * results: array of { prompt, assistant, runs: [{run_id, metric1, metric2, ...}] }
    * metrics: string[]
    * options: { width, height, dpi, outputDir, baseName, unitsMap }
@@ -41,54 +41,74 @@ class Charts {
     const { ChartJSNodeCanvas } = this;
     const canvas = new ChartJSNodeCanvas({ width, height, backgroundColour: 'white', chartCallback: undefined });
 
-    // Build data per metric -> agent -> series
+    // Get unique prompts and agents
+    const prompts = Array.from(new Set(results.map(r => r.prompt))).sort();
     const agents = Array.from(new Set(results.map(r => r.assistant))).sort();
 
     const files = [];
     for (const metric of metrics) {
-      // Per agent series
-      const seriesMap = new Map();
+      // Calculate average values per prompt per agent
+      const dataByAgent = new Map();
+
       for (const agent of agents) {
-        const agentResults = results.filter(r => r.assistant === agent);
-        // Flatten runs in natural order of run_id
-        const points = [];
-        for (const ar of agentResults) {
-          const sortedRuns = (ar.runs || []).slice().sort((a,b) => (a.run_id||0)-(b.run_id||0));
-          for (const run of sortedRuns) {
-            const v = run[metric];
-            if (v === null || v === undefined || Number.isNaN(v)) {
-              points.push(null);
-            } else if (typeof v === 'number') {
-              points.push(v);
-            } else {
-              points.push(null);
+        const promptAverages = [];
+
+        for (const prompt of prompts) {
+          // Get all runs for this agent and prompt
+          const agentPromptResults = results.filter(r => r.assistant === agent && r.prompt === prompt);
+          const values = [];
+
+          for (const result of agentPromptResults) {
+            for (const run of result.runs || []) {
+              // Skip failed runs (runs with errors)
+              if (run.error) continue;
+
+              const v = run[metric];
+              // Only include valid numeric values (exclude null, undefined, NaN)
+              if (typeof v === 'number' && !Number.isNaN(v)) {
+                values.push(v);
+              }
             }
           }
+
+          // Calculate average or null if no valid values
+          const avg = values.length > 0 ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
+          promptAverages.push(avg);
         }
-        if (points.some(p => p !== null)) {
-          seriesMap.set(agent, points);
+
+        // Only add agent if it has at least one non-null average
+        if (promptAverages.some(avg => avg !== null)) {
+          dataByAgent.set(agent, promptAverages);
         }
       }
 
-      if (seriesMap.size === 0) continue; // nothing to draw
+      if (dataByAgent.size === 0) continue; // nothing to draw
 
-      const longest = Math.max(1, ...Array.from(seriesMap.values()).map(a => a.length));
-      const labels = Array.from({ length: longest }, (_, i) => String(i + 1));
+      // Colors: green for Augment CLI (Auggie), orange for Claude Code
+      const colorMap = {
+        'Augment CLI': '#109618', // Green
+        'Claude Code': '#FF9900'  // Orange
+      };
 
-      // Colors: deterministic palette
-      const palette = [
-        '#3366CC','#DC3912','#FF9900','#109618','#990099','#0099C6','#DD4477','#66AA00','#B82E2E','#316395'
-      ];
-      const datasets = Array.from(seriesMap.entries()).map(([agent, points], idx) => ({
-        label: agent,
-        data: points,
-        borderColor: palette[idx % palette.length],
-        backgroundColor: palette[idx % palette.length] + '80',
-        spanGaps: false,
-        pointRadius: 3,
-        fill: false,
-        tension: 0
-      }));
+      // Create datasets for bar chart
+      const datasets = Array.from(dataByAgent.entries()).map(([agent, averages]) => {
+        // Use specific colors or fall back to default palette
+        let color = colorMap[agent];
+        if (!color) {
+          // Fallback colors for other agents
+          const palette = ['#3366CC','#DC3912','#990099','#0099C6','#DD4477','#66AA00','#B82E2E','#316395'];
+          const idx = agents.indexOf(agent);
+          color = palette[idx % palette.length];
+        }
+
+        return {
+          label: agent,
+          data: averages,
+          backgroundColor: color + 'CC', // Add transparency
+          borderColor: color,
+          borderWidth: 1
+        };
+      });
 
       // Units
       const unitsMap = options.unitsMap || { response_time: 's' };
@@ -106,19 +126,24 @@ class Charts {
       }
 
       const cfg = {
-        type: 'line',
-        data: { labels, datasets },
+        type: 'bar',
+        data: { labels: prompts, datasets },
         options: {
           responsive: false,
           plugins: {
             legend: { position: 'top', labels: { font: { family: 'Arial, sans-serif', size: 12 } } },
-            title: { display: true, text: `${metric} over runs (all agents)`, font: { family: 'Arial, sans-serif', size: 18 } }
+            title: { display: true, text: `Average ${metric} by Prompt`, font: { family: 'Arial, sans-serif', size: 18 } }
           },
           scales: {
-            x: { title: { display: true, text: 'Run', font: { family: 'Arial, sans-serif' } }, grid: { color: '#eee' }, ticks: { autoSkip: false } },
-            y: {
-              title: { display: true, text: `${metric}${unit}`, font: { family: 'Arial, sans-serif' } },
+            x: {
+              title: { display: true, text: 'Prompt', font: { family: 'Arial, sans-serif' } },
               grid: { color: '#eee' },
+              ticks: { autoSkip: false }
+            },
+            y: {
+              title: { display: true, text: `Average ${metric}${unit}`, font: { family: 'Arial, sans-serif' } },
+              grid: { color: '#eee' },
+              beginAtZero: true,
               ...(clampY ? { min: range[0], max: range[1] } : {})
             }
           }
