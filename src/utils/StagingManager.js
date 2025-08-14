@@ -26,9 +26,9 @@ class StagingManager {
   }
 
   async ensureOutputDir(agentDir, runId) {
-    const outDir = path.join(agentDir, 'backbencher_output', String(runId || '')); // caller may pass undefined
+    const outDir = path.join(agentDir, 'augbench_output', String(runId || '')); // caller may pass undefined
     await fs.ensureDir(path.dirname(outDir));
-    return path.join(agentDir, 'backbencher_output');
+    return path.join(agentDir, 'augbench_output');
   }
 
   async prepareForAssistant(assistantName, { repo_url, repo_path, stage_dir = './stage', branch, ref, tokenEnv } = {}) {
@@ -56,7 +56,7 @@ class StagingManager {
     }
 
     // Output artifacts directory (parent)
-    await fs.ensureDir(path.join(agentDir, 'backbencher_output'));
+    await fs.ensureDir(path.join(agentDir, 'augbench_output'));
 
     return agentDir;
   }

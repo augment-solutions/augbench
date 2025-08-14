@@ -133,7 +133,7 @@ class EnvironmentConfig {
    * Validate environment configuration
    */
   async validate() {
-    // Ensure .env is loaded even when running `backbencher validate`
+    // Ensure .env is loaded even when running `augbench validate`
     await this.loadEnvFile();
 
     const missingVars = this.getMissingVariables();
@@ -247,7 +247,7 @@ class EnvironmentConfig {
       return;
     }
 
-    const template = `# Backbencher Environment Configuration
+    const template = `# Augbench Environment Configuration
 # LLM endpoint URL
 # - OpenAI-compatible gateway (e.g., https://openrouter.ai/api/v1 or your litellm server)
 # - Or Anthropic native (https://api.anthropic.com/v1) when using LLM_PROVIDER=anthropic

@@ -9,7 +9,7 @@ class Logger {
   constructor(options = {}) {
     this.verbose = options.verbose || false;
     this.quiet = options.quiet || false;
-    this.prefix = options.prefix || 'backbencher';
+    this.prefix = options.prefix || 'augbench';
     this.logFile = options.logFile || options['log-file'];
     this.stream = this.logFile ? fs.createWriteStream(this.logFile, { flags: 'a' }) : null;
   }

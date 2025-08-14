@@ -2,7 +2,7 @@
 
 ## Overview
 
-Backbencher now generates bar charts instead of line charts for better visualization of benchmark results. Each chart displays:
+Augbench now generates bar charts instead of line charts for better visualization of benchmark results. Each chart displays:
 
 - **X-axis**: Prompt file names (e.g., "prompt1.md", "prompt2.md")
 - **Y-axis**: Average metric values for successful runs

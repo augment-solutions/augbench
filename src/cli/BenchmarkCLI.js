@@ -1,5 +1,5 @@
 /**
- * Main CLI interface for the Backbencher tool
+ * Main CLI interface for the Augbench tool
  */
 
 const { prompt } = require('../utils/inquirerCompat');
@@ -37,7 +37,7 @@ class BenchmarkCLI {
    */
   async run() {
     try {
-      this.logger.info(chalk.bold('🏃 Starting Backbencher - AI Assistant Benchmarking Tool'));
+      this.logger.info(chalk.bold('🏃 Starting Augbench - AI Assistant Benchmarking Tool'));
 
       // Step 1: Environment Configuration
       this.logger.step(1, 8, 'Environment Configuration');
@@ -125,7 +125,7 @@ class BenchmarkCLI {
    */
   async init() {
     try {
-      this.logger.info(chalk.bold('🔧 Initializing Backbencher configuration'));
+      this.logger.info(chalk.bold('🔧 Initializing Augbench configuration'));
 
       await this.settingsManager.createTemplateSettings(this.options.force);
       await this.environmentConfig.createTemplateEnv(this.options.force);
@@ -134,7 +134,7 @@ class BenchmarkCLI {
       this.logger.info('Next steps:');
       this.logger.info('1. Update .env with your LLM endpoint and API key');
       this.logger.info('2. Customize settings.json with your prompts and preferences');
-      this.logger.info('3. Run: backbencher benchmark');
+      this.logger.info('3. Run: augbench benchmark');
 
     } catch (error) {
       this.logger.error('Initialization failed:', error.message);
@@ -147,7 +147,7 @@ class BenchmarkCLI {
    */
   async validate() {
     try {
-      this.logger.info(chalk.bold('✅ Validating Backbencher configuration'));
+      this.logger.info(chalk.bold('✅ Validating Augbench configuration'));
 
       // Validate environment
       await this.environmentConfig.validate();

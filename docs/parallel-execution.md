@@ -1,8 +1,8 @@
-# Parallel Execution in Backbencher
+# Parallel Execution in Augbench
 
 ## Overview
 
-Backbencher supports two types of parallel execution to significantly speed up benchmarking:
+Augbench supports two types of parallel execution to significantly speed up benchmarking:
 
 1. **Parallel Agent Execution**: Multiple agents can be run simultaneously for the same prompt
 2. **Parallel Run Execution**: Multiple runs of the same agent-prompt combination can execute concurrently

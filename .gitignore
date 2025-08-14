@@ -1,6 +1,6 @@
-# Backbencher specific files to ignore
-backbencher.md
-backbencher1.md
+# Augbench specific files to ignore
+augbench.md
+augbench1.md
 metrics.md
 .env
 results

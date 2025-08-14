@@ -1,10 +1,10 @@
 {
-  "name": "backbencher",
+  "name": "augbench",
   "version": "1.0.0",
   "description": "A cross-platform Node.js CLI benchmarking tool for comparing performance metrics across different AI coding assistants",
   "main": "src/index.js",
   "bin": {
-    "backbencher": "./bin/backbencher.js"
+    "augbench": "./bin/augbench.js"
   },
   "scripts": {
     "start": "node src/index.js",
@@ -51,10 +51,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/backbencher.git"
+    "url": "https://github.com/yourusername/augbench.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/backbencher/issues"
+    "url": "https://github.com/yourusername/augbench/issues"
   },
-  "homepage": "https://github.com/yourusername/backbencher#readme"
+  "homepage": "https://github.com/yourusername/augbench#readme"
 }

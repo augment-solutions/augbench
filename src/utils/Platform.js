@@ -141,7 +141,7 @@ class Platform {
    * @param {string} prefix - Directory prefix
    * @returns {string} - Temporary directory path
    */
-  getTempDir(prefix = 'backbencher') {
+  getTempDir(prefix = 'augbench') {
     const tempBase = os.tmpdir();
     const tempDir = path.join(tempBase, `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
     return this.normalizePath(tempDir);
@@ -153,7 +153,7 @@ class Platform {
    * @param {string} appName - Application name
    * @returns {string} - Configuration directory path
    */
-  getConfigDir(appName = 'backbencher') {
+  getConfigDir(appName = 'augbench') {
     let configDir;
     
     if (this.isWindows) {
