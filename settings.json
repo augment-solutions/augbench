@@ -1,18 +1,17 @@
 {
   "num_prompts": 2,
+  "parallel_agents": true,
+  "parallel_runs": 4,
   "prompts": [
     "prompt_voyager_1.md",
-    "prompt_voyager_2.md",
-    "prompt_voyager_3.md",
-    "prompt_voyager_4.md",
-    "prompt_voyager_5.md"
+    "prompt_voyager_2.md"
   ],
   "assistants": [
     "Claude Code",
     "Augment CLI"
   ],
   "runs_per_prompt": 2,
-  "output_filename": "voyager_benchmark_results2",
+  "output_filename": "voyager_benchmark_results",
   "metrics": [
     "response_time",
     "output_quality",

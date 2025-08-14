@@ -1,0 +1,29 @@
+{
+  "num_prompts": 2,
+  "prompts": [
+    "prompt1.md",
+    "prompt2.md"
+  ],
+  "assistants": [
+    "Claude Code",
+    "Augment CLI"
+  ],
+  "runs_per_prompt": 10,
+  "parallel_runs": 4,
+  "output_filename": "parallel_bench_results",
+  "repo_path": "./",
+  "metrics": [
+    "response_time",
+    "output_quality",
+    "output_format_success"
+  ],
+  "metrics_config": {
+    "agent_success": {
+      "threshold": 7,
+      "mode": "quality"
+    },
+    "output_format": {
+      "regex": "^.{1,}$"
+    }
+  }
+}
