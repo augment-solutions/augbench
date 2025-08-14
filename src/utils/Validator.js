@@ -92,7 +92,7 @@ class Validator {
       
       if (mustBeWritable) {
         // Test write access by creating a temporary file
-        const testFile = path.join(absolutePath, '.backbencher-test');
+        const testFile = path.join(absolutePath, '.augbench-test');
         try {
           await this.fs.writeText(testFile, 'test');
           await this.fs.exists(testFile); // Clean up

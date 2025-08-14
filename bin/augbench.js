@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Backbencher CLI Entry Point
+ * Augbench CLI Entry Point
  * Cross-platform Node.js CLI benchmarking tool for AI coding assistants
  */
 

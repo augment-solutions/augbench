@@ -1,5 +1,5 @@
 /**
- * Basic tests for Backbencher CLI tool
+ * Basic tests for Augbench CLI tool
  */
 
 const { describe, it, beforeEach, afterEach } = require('mocha');
@@ -8,7 +8,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const { spawn } = require('child_process');
 
-describe('Backbencher CLI', function() {
+describe('Augbench CLI', function() {
   this.timeout(10000);
   
   const testDir = path.join(__dirname, 'temp');

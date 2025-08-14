@@ -1,10 +1,10 @@
-# Backbencher
+# Augbench
 
 A cross-platform Node.js CLI benchmarking tool for comparing performance metrics across different AI coding assistants.
 
 ## Overview
 
-Backbencher is designed to provide objective, reproducible benchmarks for AI coding assistants like Claude Code, Augment CLI, and others. It measures various performance metrics including response time, output quality, and custom metrics across multiple test scenarios.
+Augbench is designed to provide objective, reproducible benchmarks for AI coding assistants like Claude Code, Augment CLI, and others. It measures various performance metrics including response time, output quality, and custom metrics across multiple test scenarios.
 
 ### Key Features
 
@@ -19,7 +19,7 @@ Backbencher is designed to provide objective, reproducible benchmarks for AI cod
 
 ### Workflow
 
-Backbencher follows an 8-step workflow:
+Augbench follows an 8-step workflow:
 1. Repository selection and validation
 2. Environment configuration checking
 3. Settings management and validation
@@ -51,8 +51,8 @@ Backbencher follows an 8-step workflow:
 ### Project Structure
 
 ```
-backbencher/
-├── bin/backbencher.js          # Executable entry point
+augbench/
+├── bin/augbench.js          # Executable entry point
 ├── src/
 │   ├── adapters/              # AI assistant adapters
 │   │   ├── BaseAdapter.js
@@ -97,13 +97,13 @@ backbencher/
 
 ### Global Installation
 ```bash
-npm install -g backbencher
+npm install -g augbench
 ```
 
 ### Local Development
 ```bash
 git clone <repository-url>
-cd backbencher
+cd augbench
 npm install
 npm link
 ```
@@ -114,7 +114,7 @@ npm link
 
 1. **Initialize configuration files:**
 ```bash
-backbencher init
+augbench init
 ```
 
 2. **Configure environment variables:**
@@ -154,7 +154,7 @@ Edit `settings.json` to configure prompts, assistants, and metrics:
 
 4. **Run benchmarks:**
 ```bash
-backbencher benchmark
+augbench benchmark
 ```
 
 ##### Results persistence and charts
@@ -170,13 +170,13 @@ backbencher benchmark
 
 ### Commands
 
-#### `backbencher init`
+#### `augbench init`
 Initialize configuration files (`.env` and `settings.json`) in the current directory.
 
 **Options:**
 - `--force`: Overwrite existing configuration files
 
-#### `backbencher benchmark`
+#### `augbench benchmark`
 Run benchmark tests on AI coding assistants. After completion, a brief summary is printed to the console (per assistant: runs, completion rate, agent success rate, average response time, average quality, output format success rate, and evaluator LLM error rate).
 
 **Options:**
@@ -190,9 +190,9 @@ Run benchmark tests on AI coding assistants. After completion, a brief summary i
 - `--output <path>`: Output directory for results
 
 Exclusivity:
-- Exactly one of `--repo-url` or `--repo-path/--repository` must be provided. If neither is provided, Backbencher will prompt for a local repository path.
+- Exactly one of `--repo-url` or `--repo-path/--repository` must be provided. If neither is provided, Augbench will prompt for a local repository path.
 
-#### `backbencher validate`
+#### `augbench validate`
 Validate environment, settings, LLM connectivity, Git installation/connectivity, and CLI assistant availability (Augment CLI and Claude Code). If `--repo-url` or `--repo-path` is provided, performs remote connectivity checks or local path validation.
 
 **Options:**
@@ -219,29 +219,29 @@ Validation behavior:
 
 ### Using a remote repository
 
-You can benchmark against a remote Git repository. Backbencher creates a per-assistant staging working copy under a staging directory and runs each assistant there. The staging folder is re-used across runs and must be cleaned manually to start fresh.
+You can benchmark against a remote Git repository. Augbench creates a per-assistant staging working copy under a staging directory and runs each assistant there. The staging folder is re-used across runs and must be cleaned manually to start fresh.
 
 Examples:
 
 ```bash
 # HTTPS public repo, branch main
-backbencher benchmark --repo-url https://github.com/org/repo.git --branch main --stage-dir ./stage
+augbench benchmark --repo-url https://github.com/org/repo.git --branch main --stage-dir ./stage
 
 # SSH private repo
-backbencher validate --repo-url git@github.com:org/repo.git
+augbench validate --repo-url git@github.com:org/repo.git
 ```
 
 Behavior:
 - Per-assistant working directory: `<stage-dir>/<agent_slug>` where `agent_slug` is derived from the assistant name.
-- Clean-state policy: if the per-assistant folder already exists, Backbencher warns and exits. Remove the folder to run again, or change `--stage-dir`.
+- Clean-state policy: if the per-assistant folder already exists, Augbench warns and exits. Remove the folder to run again, or change `--stage-dir`.
 
 Charts:
-- If chart dependencies are installed, Backbencher will generate PNG bar charts for each measured metric.
+- If chart dependencies are installed, Augbench will generate PNG bar charts for each measured metric.
 - Bar charts display average values per prompt (x-axis) for each agent, excluding null values and failed runs.
 - Files are named `<base>_<metric>.png` in the same output directory.
 - Use `--output` to place artifacts in a custom directory.
 
-- Read-only discipline: source files are not modified by Backbencher; agents should write artifacts under `<stage-dir>/<agent_slug>/backbencher_output/<run_id>`.
+- Read-only discipline: source files are not modified by Augbench; agents should write artifacts under `<stage-dir>/<agent_slug>/augbench_output/<run_id>`.
 - Private repositories:
   - HTTPS: set `GH_TOKEN` or `GIT_TOKEN` for non-interactive authentication. Tokens are injected via an HTTP header (not embedded in the URL).
   - SSH: ensure your SSH agent has appropriate keys loaded.
@@ -254,7 +254,7 @@ Troubleshooting:
 - Ref not found: verify `--ref` is a valid commit SHA or tag.
 
 
-#### `backbencher metrics`
+#### `augbench metrics`
 List available metrics and their descriptions. Use `--json` to get machine-readable metadata and metrics_config help.
 
 Options:
@@ -300,8 +300,8 @@ TIMEOUT=30000
 Note on repository paths:
 - Provide a local filesystem path (absolute or relative), not a remote Git URL.
 - Examples:
-  - macOS/Linux: `backbencher benchmark --repository /Users/you/code/my-repo`
-  - Windows: `backbencher benchmark --repository "C:\Users\you\code\my-repo"`
+  - macOS/Linux: `augbench benchmark --repository /Users/you/code/my-repo`
+  - Windows: `augbench benchmark --repository "C:\Users\you\code\my-repo"`
   - If you want to benchmark a GitHub repo, clone it locally first and pass the cloned directory path.
 
 #### Settings (settings.json)
@@ -340,7 +340,7 @@ Note on repository paths:
 
 ### Parallel Execution
 
-Backbencher supports parallel execution of benchmark runs to speed up the benchmarking process:
+Augbench supports parallel execution of benchmark runs to speed up the benchmarking process:
 
 - Set `parallel_runs: 1` for sequential execution (default)
 - Set `parallel_runs: 4` to run up to 4 concurrent benchmarks per agent
@@ -382,7 +382,7 @@ Results are saved in JSON format with the following structure:
 
 ## Extensions
 
-Backbencher is designed with extensibility in mind. You can easily add new evaluator LLMs, tests, agents, and metrics to enhance the benchmarking capabilities.
+Augbench is designed with extensibility in mind. You can easily add new evaluator LLMs, tests, agents, and metrics to enhance the benchmarking capabilities.
 
 ### Adding a New Evaluator LLM
 
@@ -661,7 +661,7 @@ Evaluator LLM env (for Assessable metrics): LLM_PROVIDER (anthropic | openai-com
 
 ### Adding a New Metric
 
-Backbencher supports two types of metrics: **MeasurableMetric** (directly measured) and **AssessableMetric** (LLM-evaluated).
+Augbench supports two types of metrics: **MeasurableMetric** (directly measured) and **AssessableMetric** (LLM-evaluated).
 
 #### Adding a MeasurableMetric
 
@@ -858,7 +858,7 @@ Enable debug mode for detailed logging:
 
 ```bash
 # Set debug environment variable
-DEBUG=true backbencher benchmark --verbose
+DEBUG=true augbench benchmark --verbose
 
 # Or in .env file
 DEBUG=true
@@ -898,14 +898,14 @@ DEBUG=true
 Enable verbose logging for detailed troubleshooting:
 
 ```bash
-backbencher benchmark --verbose
+augbench benchmark --verbose
 ```
 
 ### Getting Help
 
-- Check the [Issues](https://github.com/your-repo/backbencher/issues) page
-- Review the [Documentation](https://github.com/your-repo/backbencher/wiki)
-- Join our [Discord Community](https://discord.gg/backbencher)
+- Check the [Issues](https://github.com/your-repo/augbench/issues) page
+- Review the [Documentation](https://github.com/your-repo/augbench/wiki)
+- Join our [Discord Community](https://discord.gg/augbench)
 
 ## Contributing
 
@@ -914,7 +914,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 ### Development Setup
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/your-username/backbencher.git`
+2. Clone your fork: `git clone https://github.com/your-username/augbench.git`
 3. Install dependencies: `npm install`
 4. Create a feature branch: `git checkout -b feature/your-feature`
 5. Make your changes and add tests

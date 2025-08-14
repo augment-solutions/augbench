@@ -1,5 +1,5 @@
 /**
- * Backbencher - Main Entry Point
+ * Augbench - Main Entry Point
  * Cross-platform Node.js CLI benchmarking tool for AI coding assistants
  */
 
@@ -39,7 +39,7 @@ async function main() {
   try {
     // Configure the CLI program
     program
-      .name('backbencher')
+      .name('augbench')
       .description('Cross-platform CLI benchmarking tool for AI coding assistants')
       .version('1.0.0')
       .option('-v, --verbose', 'Enable verbose logging')
@@ -78,7 +78,7 @@ async function main() {
     // Add init command for creating template files
     program
       .command('init')
-      .description('Initialize backbencher configuration files')
+      .description('Initialize augbench configuration files')
       .option('-f, --force', 'Overwrite existing files')
       .action(async (options) => {
         const cli = new BenchmarkCLI({
