@@ -9,6 +9,7 @@ const { OutputFormatSuccessMetric } = require('./OutputFormatSuccessMetric');
 const { InstructionAdherenceMetric } = require('./InstructionAdherenceMetric');
 const { ContextAdherenceMetric } = require('./ContextAdherenceMetric');
 const { StepsPerTaskMetric } = require('./StepsPerTaskMetric');
+const { ASTSimilarityMetric } = require('./ASTSimilarityMetric');
 
 class MetricsFactory {
   constructor(options = {}) {
@@ -28,6 +29,7 @@ class MetricsFactory {
     this.registerMetric('instruction_adherence', InstructionAdherenceMetric);
     this.registerMetric('context_adherence', ContextAdherenceMetric);
     this.registerMetric('steps_per_task', StepsPerTaskMetric);
+    this.registerMetric('ast_similarity', ASTSimilarityMetric);
   }
 
   /**

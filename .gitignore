@@ -1,5 +1,8 @@
 # Augbench specific files to ignore
+settings2.json
 augbench.md
+AUGMENT_AGENT_RULES.md
+internal.md
 augbench1.md
 metrics.md
 .env

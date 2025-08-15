@@ -5,6 +5,7 @@
 const { Logger } = require('../utils/Logger');
 const { ClaudeCodeAdapter } = require('./ClaudeCodeAdapter');
 const { AugmentCLIAdapter } = require('./AugmentCLIAdapter');
+const { CursorCLIAdapter } = require('./CursorCLIAdapter');
 
 class AdapterFactory {
   constructor(options = {}) {
@@ -20,6 +21,7 @@ class AdapterFactory {
   registerBuiltInAdapters() {
     this.registerAdapter('Claude Code', ClaudeCodeAdapter);
     this.registerAdapter('Augment CLI', AugmentCLIAdapter);
+    this.registerAdapter('Cursor CLI', CursorCLIAdapter);
   }
 
   /**

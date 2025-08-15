@@ -5,6 +5,7 @@
 const { getOra } = require('../utils/oraCompat');
 const chalk = require('chalk');
 const { Logger } = require('../utils/Logger');
+const { FileSystem } = require('../utils/FileSystem');
 const { MetricsFactory } = require('../metrics/MetricsFactory');
 const { AdapterFactory } = require('../adapters/AdapterFactory');
 const { ParallelExecutor } = require('../utils/ParallelExecutor');
@@ -14,6 +15,7 @@ class BenchmarkRunner {
   constructor(options = {}) {
     this.options = options;
     this.logger = new Logger(options);
+    this.fs = new FileSystem(options);
     this.metricsFactory = new MetricsFactory(options);
     this.adapterFactory = new AdapterFactory(options);
   }
@@ -22,11 +24,24 @@ class BenchmarkRunner {
    * Run all benchmarks according to settings
    */
   async runBenchmarks(repositoryPath, settings) {
+    const mode = settings.mode || 'standard';
+
+    if (mode === 'pr_recreate') {
+      return await this.runPRRecreationBenchmarks(settings);
+    } else {
+      return await this.runStandardBenchmarks(repositoryPath, settings);
+    }
+  }
+
+  /**
+   * Run standard mode benchmarks
+   */
+  async runStandardBenchmarks(repositoryPath, settings) {
     const results = [];
     const totalRuns = settings.num_prompts * settings.assistants.length * settings.runs_per_prompt;
     let currentRun = 0;
 
-    this.logger.info(`Starting benchmark with ${totalRuns} total runs`);
+    this.logger.info(`Starting standard benchmark with ${totalRuns} total runs`);
 
     // Initialize metrics
     const metrics = await this.initializeMetrics(settings.metrics, settings.metrics_config || {});
@@ -436,6 +451,244 @@ class BenchmarkRunner {
     }
 
     return promptRuns;
+  }
+
+  /**
+   * Run PR recreation mode benchmarks
+   */
+  async runPRRecreationBenchmarks(settings) {
+    this.logger.info('Starting PR recreation benchmark mode');
+
+    // Import PR recreation utilities
+    const { PRAnalyzer } = require('../utils/PRAnalyzer');
+    const { PRStagingManager } = require('../utils/PRStagingManager');
+    const { PromptGenerator } = require('../utils/PromptGenerator');
+
+    const prAnalyzer = new PRAnalyzer(this.options);
+    const prStagingManager = new PRStagingManager(this.options);
+    const promptGenerator = new PromptGenerator(this.options);
+
+    const stageDir = this.options.stageDir || settings.stage_dir || './stage';
+    const targetRepoUrl = this.options.repoUrl || settings.target_repo_url;
+    const numPRs = settings.num_prs;
+
+    try {
+      // Step 1: Analyze PRs from target repository
+      this.logger.info(`Analyzing ${numPRs} recent PRs from ${targetRepoUrl}`);
+      const prs = await prAnalyzer.analyzePRs(targetRepoUrl, numPRs, stageDir);
+
+      if (prs.length === 0) {
+        throw new Error('No PRs found for analysis');
+      }
+
+      this.logger.success(`Found ${prs.length} PRs for recreation`);
+
+      // Step 2: Setup directory structure
+      const structure = await prStagingManager.setupPRDirectories(stageDir, settings.assistants, prs);
+
+      // Step 3: Prepare human reference code
+      await prStagingManager.prepareHumanReference(targetRepoUrl, prs, structure);
+
+      // Step 4: Prepare base repository state
+      await prStagingManager.prepareBaseRepository(targetRepoUrl, prs, structure);
+
+      // Step 5: Prepare agent working directories
+      await prStagingManager.prepareAgentWorkingDirectories(settings.assistants, structure);
+
+      // Step 6: Generate prompts for each PR
+      this.logger.info('Generating prompts from PR descriptions...');
+      await promptGenerator.generatePrompts(prs, structure);
+
+      // Step 7: Initialize metrics
+      const metrics = await this.initializeMetrics(settings.metrics, settings.metrics_config || {});
+
+      // Step 8: Run benchmarks for each PR in chronological order
+      const results = [];
+      const totalRuns = prs.length * settings.assistants.length * settings.runs_per_prompt;
+      let currentRun = 0;
+
+      this.logger.info(`Starting PR recreation with ${totalRuns} total runs`);
+
+      for (const pr of prs) {
+        this.logger.info(`Processing PR ${pr.order}/${prs.length}: ${pr.title}`);
+
+        const promptPath = prStagingManager.getPromptPath(pr, structure);
+        const humanReferenceDir = prStagingManager.getHumanReferenceDir(pr, structure);
+
+        // Run all assistants for this PR
+        for (const assistantName of settings.assistants) {
+          this.logger.info(`Running ${assistantName} on PR ${pr.number}`);
+
+          const assistant = await this.adapterFactory.createAdapter(assistantName);
+          const agentWorkingDir = prStagingManager.getAgentPRWorkingDir(assistantName, pr, structure);
+          const agentBaseDir = prStagingManager.getAgentBaseDir(assistantName, structure);
+
+          // Copy current base state to PR working directory
+          await require('fs-extra').copy(agentBaseDir, agentWorkingDir, { overwrite: true });
+
+          const promptRuns = [];
+
+          // Run multiple times per prompt
+          for (let runId = 1; runId <= settings.runs_per_prompt; runId++) {
+            currentRun++;
+
+            try {
+              const runResult = await this.runSinglePRBenchmark(
+                assistant,
+                promptPath,
+                agentWorkingDir,
+                humanReferenceDir,
+                pr,
+                metrics,
+                runId
+              );
+
+              promptRuns.push(runResult);
+
+              // Generate and display enhanced console output
+              try {
+                const comparison = await prStagingManager.compareHumanAndAgentChanges(assistantName, pr, structure);
+                const consoleOutput = prStagingManager.generateConsoleOutput(
+                  assistantName,
+                  pr,
+                  runId,
+                  settings.runs_per_prompt,
+                  comparison
+                );
+                console.log(consoleOutput);
+              } catch (outputError) {
+                this.logger.warn(`Failed to generate enhanced output: ${outputError.message}`);
+              }
+
+              this.logger.debug(`Completed run ${runId} for ${assistantName} on PR ${pr.number}`);
+
+            } catch (error) {
+              this.logger.error(`Run ${runId} failed for ${assistantName} on PR ${pr.number}: ${error.message}`);
+              promptRuns.push({
+                run_id: runId,
+                error: error.message,
+                response_time: null
+              });
+            }
+          }
+
+          // Find the best run for incremental updates
+          const bestRun = this.findBestRun(promptRuns);
+          if (bestRun && !bestRun.error) {
+            // Update agent's incremental code with the best result and get change summary
+            const changeResult = await prStagingManager.updateAgentIncrementalCode(assistantName, pr, structure, agentWorkingDir);
+
+            if (changeResult) {
+              this.logger.info(`Stored ${changeResult.summary.filesChanged} changed files for ${assistantName} PR ${pr.number} (hash: ${changeResult.changeHash})`);
+            }
+          }
+
+          results.push({
+            prompt: `pr_${pr.order}_${pr.number}.md`,
+            assistant: assistantName,
+            runs: promptRuns,
+            pr_info: {
+              number: pr.number,
+              order: pr.order,
+              title: pr.title
+            }
+          });
+        }
+      }
+
+      this.logger.success('PR recreation benchmark completed');
+      return results;
+
+    } catch (error) {
+      this.logger.error(`PR recreation benchmark failed: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Run a single PR recreation benchmark
+   */
+  async runSinglePRBenchmark(assistant, promptPath, agentWorkingDir, humanReferenceDir, prInfo, metrics, runId) {
+    const startTime = Date.now();
+
+    // Run the assistant (execute expects a file path, not content)
+    const output = await assistant.execute(promptPath, agentWorkingDir);
+
+    const endTime = Date.now();
+    const responseTime = (endTime - startTime) / 1000;
+
+    // Measure all metrics with PR-specific context
+    const metricResults = {};
+    const evaluatorErrors = [];
+
+    for (const [metricName, metric] of Object.entries(metrics)) {
+      try {
+        const context = {
+          prompt: promptPath,
+          assistant: assistant.name,
+          agentWorkingDir,
+          humanReferenceDir,
+          prInfo,
+          startTime,
+          endTime,
+          responseTime
+        };
+
+        metricResults[metricName] = await metric.measure(output, context);
+      } catch (error) {
+        this.logger.warn(`Failed to measure ${metricName}: ${error.message}`);
+        metricResults[metricName] = null;
+      }
+    }
+
+    return {
+      run_id: runId,
+      response_time: parseFloat(responseTime.toFixed(2)),
+      ...metricResults
+    };
+  }
+
+  /**
+   * Find the best run from a set of runs (highest overall score)
+   */
+  findBestRun(runs) {
+    if (!runs || runs.length === 0) return null;
+
+    // Filter out failed runs
+    const successfulRuns = runs.filter(run => !run.error);
+    if (successfulRuns.length === 0) return null;
+
+    // Score runs based on available metrics (prioritize ast_similarity and instruction_adherence)
+    return successfulRuns.reduce((best, current) => {
+      const bestScore = this.calculateRunScore(best);
+      const currentScore = this.calculateRunScore(current);
+      return currentScore > bestScore ? current : best;
+    });
+  }
+
+  /**
+   * Calculate a composite score for a run
+   */
+  calculateRunScore(run) {
+    let score = 0;
+    let count = 0;
+
+    // Prioritize PR-specific metrics
+    const weights = {
+      ast_similarity: 0.4,
+      instruction_adherence: 0.3,
+      output_quality: 0.2,
+      context_adherence: 0.1
+    };
+
+    for (const [metric, weight] of Object.entries(weights)) {
+      if (run[metric] && typeof run[metric] === 'number') {
+        score += run[metric] * weight;
+        count += weight;
+      }
+    }
+
+    return count > 0 ? score / count : 0;
   }
 
   /**

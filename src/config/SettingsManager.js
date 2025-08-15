@@ -87,9 +87,9 @@ class SettingsManager {
   /**
    * Validate settings.json against schema
    */
-  async validateSettings() {
+  async validateSettings(cliOptions = {}) {
     this.logger.info('Validating settings configuration...');
-    
+
     if (!(await this.fs.exists(this.settingsPath))) {
       throw new Error('settings.json file not found');
     }
@@ -97,14 +97,26 @@ class SettingsManager {
     // Read and parse settings
     const settings = await this.fs.readJSON(this.settingsPath);
 
+    // Create schema with CLI options context
+    const schema = this.createValidationSchema(cliOptions);
+
     // Validate against schema
-    const { error, value } = this.schema.validate(settings);
+    const { error, value } = schema.validate(settings);
     if (error) {
       throw new Error(`Settings validation failed: ${error.details[0].message}`);
     }
 
-    // Additional validations
-    await this.validatePromptFiles(value.prompts);
+    const mode = value.mode || 'standard';
+    this.logger.info(`Detected benchmark mode: ${mode}`);
+
+    // Mode-specific validations
+    if (mode === 'standard') {
+      await this.validateStandardMode(value);
+    } else if (mode === 'pr_recreate') {
+      await this.validatePRRecreateMode(value, cliOptions);
+    }
+
+    // Common validations
     await this.validateAssistants(value.assistants);
 
     // Metrics config warnings
@@ -128,6 +140,49 @@ class SettingsManager {
 
     this.logger.success('Settings validation passed');
     return value;
+  }
+
+  /**
+   * Validate standard mode specific settings
+   */
+  async validateStandardMode(settings) {
+    this.logger.debug('Validating standard mode settings...');
+
+    // Validate prompt files exist
+    if (settings.prompts && settings.prompts.length > 0) {
+      await this.validatePromptFiles(settings.prompts);
+    }
+  }
+
+  /**
+   * Validate PR recreation mode specific settings
+   */
+  async validatePRRecreateMode(settings, cliOptions = {}) {
+    this.logger.debug('Validating PR recreation mode settings...');
+
+    // Check if repository URL is provided via CLI or settings
+    const repoUrl = cliOptions.repoUrl || settings.target_repo_url;
+    if (!repoUrl) {
+      throw new Error('Repository URL is required for PR recreation mode. Provide either --repo-url CLI argument or target_repo_url in settings.json');
+    }
+
+    // Validate repository URL format
+    const gitUrlPattern = /^(https?:\/\/|git@)[\w\.-]+[\/:][\w\.-]+\/[\w\.-]+(\.git)?$/;
+    if (!gitUrlPattern.test(repoUrl)) {
+      throw new Error(`Invalid Git repository URL: ${repoUrl}`);
+    }
+
+    // Validate num_prs is reasonable
+    if (settings.num_prs && settings.num_prs > 50) {
+      this.logger.warn(`num_prs is set to ${settings.num_prs}. Processing many PRs may take significant time.`);
+    }
+
+    // Ensure PR recreation specific metrics are available
+    const prMetrics = ['ast_similarity', 'instruction_adherence'];
+    const missingMetrics = prMetrics.filter(metric => !settings.metrics.includes(metric));
+    if (missingMetrics.length > 0) {
+      this.logger.warn(`Recommended metrics for PR recreation mode are missing: ${missingMetrics.join(', ')}`);
+    }
   }
 
   /**
@@ -161,7 +216,7 @@ class SettingsManager {
    * Validate that assistants are supported
    */
   async validateAssistants(assistants) {
-    const supportedAssistants = ['Claude Code', 'Augment CLI']; // This will be expanded
+    const supportedAssistants = ['Claude Code', 'Augment CLI', 'Cursor CLI']; // This will be expanded
     
     for (const assistant of assistants) {
       if (!supportedAssistants.includes(assistant)) {
@@ -182,6 +237,7 @@ class SettingsManager {
     }
 
     const template = {
+      mode: "standard",
       num_prompts: 3,
       prompts: [
         "prompt1.md",
@@ -190,7 +246,8 @@ class SettingsManager {
       ],
       assistants: [
         "Claude Code",
-        "Augment CLI"
+        "Augment CLI",
+        "Cursor CLI"
       ],
       runs_per_prompt: 2,
       parallel_runs: 1,
@@ -224,14 +281,37 @@ class SettingsManager {
   /**
    * Create Joi validation schema for settings
    */
-  createValidationSchema() {
+  createValidationSchema(cliOptions = {}) {
     return Joi.object({
-      num_prompts: Joi.number().integer().min(1).required()
-        .description('Number of prompts to use'),
+      // Mode selection field
+      mode: Joi.string().valid('standard', 'pr_recreate').default('standard')
+        .description('Benchmark mode: "standard" for traditional prompts, "pr_recreate" for PR recreation'),
 
-      prompts: Joi.array().items(Joi.string().min(1)).min(1).required()
-        .description('Array of prompt file paths'),
+      // Standard mode fields (conditionally required)
+      num_prompts: Joi.when('mode', {
+        is: 'standard',
+        then: Joi.number().integer().min(1).required(),
+        otherwise: Joi.number().integer().min(1).optional()
+      }).description('Number of prompts to use'),
 
+      prompts: Joi.when('mode', {
+        is: 'standard',
+        then: Joi.array().items(Joi.string().min(1)).min(1).required(),
+        otherwise: Joi.array().items(Joi.string().min(1)).optional()
+      }).description('Array of prompt file paths'),
+
+      // PR recreation mode fields (conditionally required)
+      num_prs: Joi.when('mode', {
+        is: 'pr_recreate',
+        then: Joi.number().integer().min(1).required(),
+        otherwise: Joi.number().integer().min(1).optional()
+      }).description('Number of recent PRs to recreate (PR recreation mode only)'),
+
+      // target_repo_url is optional if --repo-url CLI argument is provided
+      target_repo_url: Joi.string().optional()
+        .description('Target repository URL for PR analysis (PR recreation mode only)'),
+
+      // Common fields (always required)
       assistants: Joi.array().items(Joi.string().min(1)).min(1).required()
         .description('Array of assistant names'),
 
@@ -247,7 +327,7 @@ class SettingsManager {
       output_filename: Joi.string().min(1).required()
         .description('Output filename for results'),
 
-      // New repository fields (optional here; enforce xor at runtime or when provided)
+      // Repository fields (for standard mode)
       repo_url: Joi.string().allow(''),
       repo_path: Joi.string().allow(''),
       stage_dir: Joi.string().default('./stage'),
@@ -268,20 +348,47 @@ class SettingsManager {
         }).default({})
       }).default({})
     }).custom((value, helpers) => {
-      // Validate that num_prompts matches prompts array length
-      if (value.num_prompts !== value.prompts.length) {
-        return helpers.error('custom.promptsLength');
+      const mode = value.mode || 'standard';
+
+      // Standard mode validations
+      if (mode === 'standard') {
+        // Validate that num_prompts matches prompts array length
+        if (value.num_prompts && value.prompts && value.num_prompts !== value.prompts.length) {
+          return helpers.error('custom.promptsLength');
+        }
+        // If repo fields provided, enforce xor
+        const hasUrl = value.repo_url && value.repo_url.trim() !== '';
+        const hasPath = value.repo_path && value.repo_path.trim() !== '';
+        if (hasUrl && hasPath) {
+          return helpers.error('custom.repoXor');
+        }
       }
-      // If repo fields provided, enforce xor
-      const hasUrl = value.repo_url && value.repo_url.trim() !== '';
-      const hasPath = value.repo_path && value.repo_path.trim() !== '';
-      if (hasUrl && hasPath) {
-        return helpers.error('custom.repoXor');
+
+      // PR recreation mode validations
+      if (mode === 'pr_recreate') {
+        // Check if repository URL is provided via CLI or settings
+        const hasCliRepoUrl = cliOptions && cliOptions.repoUrl;
+        const hasSettingsRepoUrl = value.target_repo_url;
+
+        if (!hasCliRepoUrl && !hasSettingsRepoUrl) {
+          return helpers.error('custom.repoUrlRequired');
+        }
+
+        // Validate repository URL format if provided in settings
+        if (hasSettingsRepoUrl) {
+          const gitUrlPattern = /^(https?:\/\/|git@)[\w\.-]+[\/:][\w\.-]+\/[\w\.-]+(\.git)?$/;
+          if (!gitUrlPattern.test(value.target_repo_url)) {
+            return helpers.error('custom.invalidGitUrl');
+          }
+        }
       }
+
       return value;
     }).messages({
       'custom.promptsLength': 'num_prompts must match the length of prompts array',
-      'custom.repoXor': 'Exactly one of repo_url or repo_path may be set in settings.json'
+      'custom.repoXor': 'Exactly one of repo_url or repo_path may be set in settings.json',
+      'custom.invalidGitUrl': 'target_repo_url must be a valid Git repository URL',
+      'custom.repoUrlRequired': 'Repository URL is required for PR recreation mode. Provide either --repo-url CLI argument or target_repo_url in settings.json'
     });
   }
 
@@ -295,9 +402,18 @@ class SettingsManager {
     }
 
     const settings = await this.fs.readJSON(this.settingsPath);
-    
+    const mode = settings.mode || 'standard';
+
     this.logger.info('Current settings:');
-    this.logger.info(`- Prompts: ${settings.prompts?.join(', ') || 'None'}`);
+    this.logger.info(`- Mode: ${mode}`);
+
+    if (mode === 'standard') {
+      this.logger.info(`- Prompts: ${settings.prompts?.join(', ') || 'None'}`);
+    } else if (mode === 'pr_recreate') {
+      this.logger.info(`- Target repository: ${settings.target_repo_url || 'Not set'}`);
+      this.logger.info(`- Number of PRs: ${settings.num_prs || 'Not set'}`);
+    }
+
     this.logger.info(`- Assistants: ${settings.assistants?.join(', ') || 'None'}`);
     this.logger.info(`- Runs per prompt: ${settings.runs_per_prompt || 'Not set'}`);
     this.logger.info(`- Output file: ${settings.output_filename || 'Not set'}`);

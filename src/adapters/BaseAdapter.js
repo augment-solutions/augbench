@@ -15,7 +15,7 @@ class BaseAdapter {
     this.options = options;
     this.logger = new Logger(options);
     this.fs = new FileSystem(options);
-    this.timeout = options.timeout || 600000; // 10 minutes default
+    this.timeout = options.timeout || 1200000; // 20 minutes default
     this.maxRetries = options.maxRetries || 3;
   }
 

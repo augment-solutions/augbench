@@ -52,7 +52,6 @@ class AugmentCLIAdapter extends BaseAdapter {
       this.logger.debug(`Executing: ${this.command} ${args.join(' ')}`);
       
       const child = spawn(this.command, args, {
-        cwd: repositoryPath,
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env }
       });
