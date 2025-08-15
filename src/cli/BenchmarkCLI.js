@@ -49,20 +49,34 @@ class BenchmarkCLI {
 
       // Step 3: Settings Validation
       this.logger.step(3, 8, 'Settings Validation');
-      const settings = await this.settingsManager.validateSettings();
+      const cliOptions = {
+        repoUrl: this.options.repoUrl,
+        repoPath: this.options.repoPath || this.options.repository
+      };
+      const settings = await this.settingsManager.validateSettings(cliOptions);
 
-      // Step 4: Repository Selection / Effective Repo Source
-      this.logger.step(4, 8, 'Repository Selection');
-      const repoUrl = this.options.repoUrl || settings.repo_url || '';
-      const repoPathOpt = this.options.repoPath || this.options.repository || settings.repo_path || '';
-      // Enforce mutual exclusivity if both are set
-      if (repoUrl && repoPathOpt) {
-        throw new Error('Exactly one of --repo-url or --repo-path/--repository must be provided');
-      }
-      // If neither is provided and no repoUrl, fall back to interactive/local selection
-      let repositoryPath = repoPathOpt;
-      if (!repoUrl && !repoPathOpt) {
-        repositoryPath = await this.repositorySelector.selectRepository(this.options.repository);
+      // Step 4: Mode-specific Setup
+      this.logger.step(4, 8, 'Mode-specific Setup');
+      const mode = settings.mode || 'standard';
+      let repositoryPath = null;
+
+      if (mode === 'pr_recreate') {
+        // PR recreation mode - validate target repository and get user input
+        await this.setupPRRecreationMode(settings);
+        repositoryPath = null; // Not used in PR recreation mode
+      } else {
+        // Standard mode - repository selection
+        const repoUrl = this.options.repoUrl || settings.repo_url || '';
+        const repoPathOpt = this.options.repoPath || this.options.repository || settings.repo_path || '';
+        // Enforce mutual exclusivity if both are set
+        if (repoUrl && repoPathOpt) {
+          throw new Error('Exactly one of --repo-url or --repo-path/--repository must be provided');
+        }
+        // If neither is provided and no repoUrl, fall back to interactive/local selection
+        repositoryPath = repoPathOpt;
+        if (!repoUrl && !repoPathOpt) {
+          repositoryPath = await this.repositorySelector.selectRepository(this.options.repository);
+        }
       }
 
       // Assistant availability check before confirmation
@@ -153,9 +167,16 @@ class BenchmarkCLI {
       await this.environmentConfig.validate();
       this.logger.success('Environment configuration is valid');
 
-      // Validate settings
-      const settings = await this.settingsManager.validateSettings();
+      // Validate settings with CLI options context
+      const cliOptions = {
+        repoUrl: this.options.repoUrl,
+        repoPath: this.options.repoPath || this.options.repository
+      };
+      const settings = await this.settingsManager.validateSettings(cliOptions);
       this.logger.success('Settings configuration is valid');
+
+      const mode = settings.mode || 'standard';
+      this.logger.info(`Validation mode: ${mode}`);
 
       // Git installation and connectivity
       const { GitManager } = require('../utils/GitManager');
@@ -167,34 +188,63 @@ class BenchmarkCLI {
         this.logger.error(`Git installation/version check failed: ${e.message}`);
         throw e;
       }
-      const publicProbe = 'https://github.com/chromium/chromium';
-      const publicOk = await git.testConnectivity(publicProbe);
-      if (publicOk) {
-        this.logger.success(`Git connectivity OK to ${publicProbe}`);
-      } else {
-        this.logger.warn(`Git connectivity failed to ${publicProbe}`);
-      }
-      if (this.options.repoUrl) {
-        const ok = await git.testConnectivity(this.options.repoUrl, process.env.GH_TOKEN || process.env.GIT_TOKEN);
-        if (ok) this.logger.success(`Remote repository reachable: ${this.options.repoUrl}`);
-        else this.logger.warn(`Cannot reach remote repository: ${this.options.repoUrl}. If private, configure GH_TOKEN/GIT_TOKEN or SSH keys.`);
+
+      // Mode-specific validation
+      if (mode === 'standard') {
+        // Standard mode validations
+        const publicProbe = 'https://github.com/chromium/chromium';
+        const publicOk = await git.testConnectivity(publicProbe);
+        if (publicOk) {
+          this.logger.success(`Git connectivity OK to ${publicProbe}`);
+        } else {
+          this.logger.warn(`Git connectivity failed to ${publicProbe}`);
+        }
+
+        if (this.options.repoUrl) {
+          const ok = await git.testConnectivity(this.options.repoUrl, process.env.GH_TOKEN || process.env.GIT_TOKEN);
+          if (ok) this.logger.success(`Remote repository reachable: ${this.options.repoUrl}`);
+          else this.logger.warn(`Cannot reach remote repository: ${this.options.repoUrl}. If private, configure GH_TOKEN/GIT_TOKEN or SSH keys.`);
+        }
+
+        // Validate repository path if provided; otherwise validate home access
+        const repoPathOpt = this.options.repoPath || this.options.repository;
+        if (repoPathOpt) {
+          const absPath = this.repositorySelector.fs.getAbsolutePath(repoPathOpt.trim());
+          await this.repositorySelector.validateRepository(absPath);
+          this.logger.success('Repository path validation passed');
+        } else {
+          await this.validator.validateHomeAccess();
+          this.logger.success('User home directory access OK');
+        }
+
+      } else if (mode === 'pr_recreate') {
+        // PR recreation mode validations
+        const targetRepoUrl = cliOptions.repoUrl || settings.target_repo_url;
+        if (targetRepoUrl) {
+          const ok = await git.testConnectivity(targetRepoUrl, process.env.GH_TOKEN || process.env.GIT_TOKEN);
+          if (ok) {
+            this.logger.success(`Target repository reachable: ${targetRepoUrl}`);
+          } else {
+            this.logger.warn(`Cannot reach target repository: ${targetRepoUrl}. If private, configure GH_TOKEN/GIT_TOKEN or SSH keys.`);
+          }
+        }
+
+        // Validate LLM access for prompt generation
+        const { PromptGenerator } = require('../utils/PromptGenerator');
+        const promptGenerator = new PromptGenerator(this.options);
+        const llmAvailable = await promptGenerator.validateLLMAccess();
+
+        if (llmAvailable) {
+          this.logger.success('LLM access for prompt generation validated');
+        } else {
+          this.logger.warn('LLM not accessible - prompt generation may fail');
+        }
       }
 
-      // Validate repository path if provided; otherwise validate home access
-      const repoPathOpt = this.options.repoPath || this.options.repository;
-      if (repoPathOpt) {
-        const absPath = this.repositorySelector.fs.getAbsolutePath(repoPathOpt.trim());
-        await this.repositorySelector.validateRepository(absPath);
-        this.logger.success('Repository path validation passed');
-      } else {
-        await this.validator.validateHomeAccess();
-        this.logger.success('User home directory access OK');
-      }
-
-      // Validate CLI assistants (Augment CLI and Claude Code) initialization
+      // Validate CLI assistants (Augment CLI, Claude Code, and Cursor CLI) initialization
       this.logger.info('Checking CLI assistant availability...');
       const adapterFactory = new AdapterFactory(this.options);
-      const toCheck = ['Augment CLI', 'Claude Code'];
+      const toCheck = ['Augment CLI', 'Claude Code', 'Cursor CLI'];
       const check = await adapterFactory.checkAdapterAvailability(toCheck);
 
       const requiredMissing = [];
@@ -218,7 +268,15 @@ class BenchmarkCLI {
       }
 
       this.logger.info('Configuration summary:');
-      this.logger.info(`- Prompts: ${settings.num_prompts}`);
+      this.logger.info(`- Mode: ${mode}`);
+
+      if (mode === 'standard') {
+        this.logger.info(`- Prompts: ${settings.num_prompts}`);
+      } else if (mode === 'pr_recreate') {
+        this.logger.info(`- Target repository: ${settings.target_repo_url}`);
+        this.logger.info(`- Number of PRs: ${settings.num_prs}`);
+      }
+
       this.logger.info(`- Assistants: ${settings.assistants.join(', ')}`);
       this.logger.info(`- Runs per prompt: ${settings.runs_per_prompt}`);
       this.logger.info(`- Parallel runs: ${settings.parallel_runs || 1}`);
@@ -235,9 +293,20 @@ class BenchmarkCLI {
    * Show final confirmation before running benchmarks
    */
   async confirmConfiguration(repositoryPath, settings) {
+    const mode = settings.mode || 'standard';
+
     this.logger.info('\n' + chalk.bold('📋 Configuration Summary:'));
-    this.logger.info(`Repository: ${repositoryPath}`);
-    this.logger.info(`Prompts: ${settings.prompts.join(', ')}`);
+    this.logger.info(`Mode: ${mode}`);
+
+    if (mode === 'standard') {
+      this.logger.info(`Repository: ${repositoryPath}`);
+      this.logger.info(`Prompts: ${settings.prompts.join(', ')}`);
+    } else if (mode === 'pr_recreate') {
+      const targetRepoUrl = this.options.repoUrl || settings.target_repo_url;
+      this.logger.info(`Target repository: ${targetRepoUrl}`);
+      this.logger.info(`Number of PRs: ${settings.num_prs}`);
+    }
+
     this.logger.info(`Assistants: ${settings.assistants.join(', ')}`);
     this.logger.info(`Runs per prompt: ${settings.runs_per_prompt}`);
     this.logger.info(`Parallel runs: ${settings.parallel_runs || 1}`);
@@ -248,7 +317,7 @@ class BenchmarkCLI {
       {
         type: 'confirm',
         name: 'confirmed',
-        message: 'Do you want to proceed with the benchmark?',
+        message: `Do you want to proceed with the ${mode} benchmark?`,
         default: true
       }
     ]);
@@ -296,6 +365,110 @@ class BenchmarkCLI {
       return '';
     }
   }
+
+  /**
+   * Setup PR recreation mode with user interaction
+   */
+  async setupPRRecreationMode(settings) {
+    this.logger.info('Setting up PR Recreation Mode...');
+
+    // Get repository URL from CLI argument or settings
+    const targetRepoUrl = this.options.repoUrl || settings.target_repo_url;
+    if (!targetRepoUrl) {
+      throw new Error('Repository URL is required for PR recreation mode. Provide either --repo-url CLI argument or target_repo_url in settings.json');
+    }
+
+    this.logger.info(`Target repository: ${targetRepoUrl}`);
+
+    // Get number of PRs if not specified
+    let numPRs = settings.num_prs;
+    if (!numPRs) {
+      const { num_prs } = await prompt([
+        {
+          type: 'input',
+          name: 'num_prs',
+          message: 'How many recent PRs would you like to recreate?',
+          default: '5',
+          validate: (input) => {
+            const num = parseInt(input);
+            if (isNaN(num) || num < 1 || num > 50) {
+              return 'Please enter a number between 1 and 50';
+            }
+            return true;
+          }
+        }
+      ]);
+      numPRs = parseInt(num_prs);
+      settings.num_prs = numPRs;
+    }
+
+    this.logger.info(`Will recreate ${numPRs} recent PRs`);
+
+    // Validate LLM access for prompt generation
+    const { PromptGenerator } = require('../utils/PromptGenerator');
+    const promptGenerator = new PromptGenerator(this.options);
+
+    this.logger.info('Validating LLM access for prompt generation...');
+    const llmAvailable = await promptGenerator.validateLLMAccess();
+
+    if (!llmAvailable) {
+      const llmConfig = promptGenerator.getLLMConfig();
+      this.logger.warn(`LLM not accessible at ${llmConfig.endpoint}`);
+      this.logger.warn('Please ensure your LLM service is running and accessible');
+
+      const { proceed } = await prompt([
+        {
+          type: 'confirm',
+          name: 'proceed',
+          message: 'Do you want to proceed anyway? (Prompt generation will fail)',
+          default: false
+        }
+      ]);
+
+      if (!proceed) {
+        throw new Error('PR recreation mode requires LLM access for prompt generation');
+      }
+    } else {
+      this.logger.success('LLM access validated');
+    }
+
+    // Validate Git access
+    const { GitManager } = require('../utils/GitManager');
+    const git = new GitManager(this.options);
+
+    try {
+      await git.ensureMinVersion('2.30.0');
+      this.logger.success('Git installation validated');
+    } catch (error) {
+      throw new Error(`Git validation failed: ${error.message}`);
+    }
+
+    // Test repository connectivity
+    this.logger.info('Testing repository connectivity...');
+    const token = process.env.GH_TOKEN || process.env.GIT_TOKEN;
+    const canConnect = await git.testConnectivity(targetRepoUrl, token);
+
+    if (!canConnect) {
+      this.logger.warn('Cannot connect to target repository');
+      this.logger.warn('Please check the repository URL and your authentication');
+
+      const { proceed } = await prompt([
+        {
+          type: 'confirm',
+          name: 'proceed',
+          message: 'Do you want to proceed anyway?',
+          default: false
+        }
+      ]);
+
+      if (!proceed) {
+        throw new Error('Cannot proceed without repository access');
+      }
+    } else {
+      this.logger.success('Repository connectivity validated');
+    }
+  }
+
   /**
    * Save benchmark results to file
    */

@@ -9,8 +9,11 @@ Augbench is designed to provide objective, reproducible benchmarks for AI coding
 ### Key Features
 
 - **Cross-Platform**: Works seamlessly on macOS, Linux, and Windows
+- **Dual Benchmark Modes**:
+  - **Standard Mode**: Traditional prompt-based benchmarking with custom prompts
+  - **PR Recreation Mode**: Recreate actual Pull Requests from repository history for real-world evaluation
 - **Extensible Architecture**: Easy to add new AI assistants, metrics, and evaluators
-- **Comprehensive Metrics**: Response time, output quality, instruction/context adherence, output format success, steps per task, and summary rates
+- **Comprehensive Metrics**: Response time, output quality, instruction/context adherence, AST similarity, output format success, steps per task, and summary rates
 - **Interactive CLI**: User-friendly prompts and progress indicators
 - **Robust Error Handling**: Graceful failure recovery and detailed error reporting
 - **Flexible Configuration**: JSON-based settings with validation
@@ -167,6 +170,60 @@ augbench benchmark
 - Known ranges (e.g., `output_quality` 0–10) are clamped when applicable
 - Install chart dependencies to enable PNGs: `npm install chartjs-node-canvas chart.js @napi-rs/canvas`
 
+### PR Recreation Mode
+
+PR Recreation Mode benchmarks AI assistants by having them recreate actual Pull Requests from a repository's history. This provides a more realistic evaluation using real-world development scenarios.
+
+#### Quick Setup
+
+1. **Configure PR Recreation Mode:**
+```json
+{
+  "mode": "pr_recreate",
+  "target_repo_url": "https://github.com/owner/repository.git",
+  "num_prs": 5,
+  "assistants": ["Claude Code", "Augment CLI"],
+  "runs_per_prompt": 2,
+  "output_filename": "pr_recreation_results",
+  "metrics": [
+    "response_time",
+    "ast_similarity",
+    "instruction_adherence",
+    "output_quality"
+  ]
+}
+```
+
+2. **Set up LLM for prompt generation:**
+```env
+LLM_ENDPOINT=http://localhost:11434/api/generate
+LLM_MODEL=llama2
+GH_TOKEN=your_github_token  # For private repositories
+```
+
+3. **Run PR recreation benchmark:**
+```bash
+augbench benchmark
+```
+
+#### How it Works
+
+1. **Analyzes Recent PRs**: Clones the target repository and identifies recent merged Pull Requests
+2. **Generates Prompts**: Uses an LLM to convert PR descriptions into coding prompts
+3. **Creates Test Environment**: Sets up isolated environments with pre-PR codebase state
+4. **Runs Benchmarks**: Executes assistants on generated prompts in chronological order
+5. **Evaluates Results**: Compares outputs with actual PR implementations using specialized metrics
+6. **Tracks Progress**: Updates each assistant's codebase incrementally as they complete PRs
+
+#### Key Features
+
+- **Real-world Scenarios**: Tests on actual development tasks from real repositories
+- **Chronological Execution**: PRs processed in merge order for realistic progression
+- **Specialized Metrics**: AST Similarity and enhanced Instruction Adherence for code comparison
+- **Incremental Development**: Successful implementations become base for subsequent PRs
+- **Automated Prompt Generation**: Converts PR descriptions into actionable coding prompts
+
+For detailed documentation, see [PR Recreation Mode Guide](docs/PR_RECREATION_MODE.md).
 
 ### Commands
 

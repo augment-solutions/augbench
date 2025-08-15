@@ -57,9 +57,17 @@ class ResultsStorage {
     const { Charts } = require('./Charts');
     const charts = new Charts(this.options);
     const unitsMap = { response_time: 's' };
-    const rangesMap = { output_quality: [0, 10] };
+    const rangesMap = {
+      output_quality: [0, 10],
+      ast_similarity: [0, 10],
+      instruction_adherence: [0, 10],
+      context_adherence: [0, 10]
+    };
     let pngPaths = [];
     try {
+      // Detect if this is PR recreation mode
+      const isPRMode = this.isPRRecreationMode(results);
+
       pngPaths = await charts.generateMetricCharts(results, metrics, {
         width: 1200,
         height: 800,
@@ -67,7 +75,8 @@ class ResultsStorage {
         outputDir,
         baseName,
         unitsMap,
-        rangesMap
+        rangesMap,
+        isPRMode
       });
     } catch (e) {
       this.logger.warn(`Failed to generate charts: ${e.message}`);
@@ -153,33 +162,66 @@ class ResultsStorage {
 
   /**
    * Validate individual result entry
-   * 
+   *
    * @param {Object} result - Result entry to validate
    * @throws {Error} - If result format is invalid
    */
   validateResultEntry(result) {
     const requiredFields = ['prompt', 'assistant', 'runs'];
-    
+
     for (const field of requiredFields) {
       if (!(field in result)) {
         throw new Error(`Result entry missing required field: ${field}`);
       }
     }
-    
+
     if (typeof result.prompt !== 'string') {
       throw new Error('Result prompt must be a string');
     }
-    
+
     if (typeof result.assistant !== 'string') {
       throw new Error('Result assistant must be a string');
     }
-    
+
     if (!Array.isArray(result.runs)) {
       throw new Error('Result runs must be an array');
     }
-    
+
+    // Validate PR-specific fields if present
+    if (result.pr_info) {
+      this.validatePRInfo(result.pr_info);
+    }
+
     for (const run of result.runs) {
       this.validateRunEntry(run);
+    }
+  }
+
+  /**
+   * Validate PR information structure
+   *
+   * @param {Object} prInfo - PR information to validate
+   * @throws {Error} - If PR info format is invalid
+   */
+  validatePRInfo(prInfo) {
+    const requiredFields = ['number', 'order', 'title'];
+
+    for (const field of requiredFields) {
+      if (!(field in prInfo)) {
+        throw new Error(`PR info missing required field: ${field}`);
+      }
+    }
+
+    if (typeof prInfo.number !== 'number') {
+      throw new Error('PR info number must be a number');
+    }
+
+    if (typeof prInfo.order !== 'number') {
+      throw new Error('PR info order must be a number');
+    }
+
+    if (typeof prInfo.title !== 'string') {
+      throw new Error('PR info title must be a string');
     }
   }
 
@@ -223,7 +265,7 @@ class ResultsStorage {
 
   /**
    * Calculate total number of runs in results
-   * 
+   *
    * @param {Array} results - Results array
    * @returns {number} - Total number of runs
    */
@@ -234,24 +276,62 @@ class ResultsStorage {
   }
 
   /**
+   * Detect if results are from PR recreation mode
+   *
+   * @param {Array} results - Results array
+   * @returns {boolean} - Whether this is PR recreation mode
+   */
+  isPRRecreationMode(results) {
+    return results.length > 0 && results.some(result =>
+      result.pr_info || result.prompt.startsWith('pr_')
+    );
+  }
+
+  /**
    * Generate summary statistics from results
    * 
    * @param {Array} results - Results array
    * @returns {Object} - Summary statistics
    */
   generateSummary(results) {
+    const isPRMode = this.isPRRecreationMode(results);
+
     const summary = {
+      mode: isPRMode ? 'pr_recreate' : 'standard',
       totalPrompts: results.length,
       totalAssistants: new Set(results.map(r => r.assistant)).size,
       totalRuns: this.calculateTotalRuns(results),
       assistants: {},
       prompts: {}
     };
+
+    // Add PR-specific summary information
+    if (isPRMode) {
+      const prs = results
+        .filter(r => r.pr_info)
+        .map(r => r.pr_info)
+        .reduce((unique, pr) => {
+          if (!unique.find(p => p.number === pr.number)) {
+            unique.push(pr);
+          }
+          return unique;
+        }, [])
+        .sort((a, b) => a.order - b.order);
+
+      summary.prs = {
+        total: prs.length,
+        list: prs.map(pr => ({
+          number: pr.number,
+          order: pr.order,
+          title: pr.title
+        }))
+      };
+    }
     
     // Analyze by assistant
     for (const result of results) {
       if (!summary.assistants[result.assistant]) {
-        summary.assistants[result.assistant] = {
+        const assistantSummary = {
           prompts: 0,
           runs: 0,
           successfulRuns: 0,
@@ -263,6 +343,15 @@ class ResultsStorage {
           llmCallErrorRate: 0,
           outputFormatSuccessRate: 0
         };
+
+        // Add PR-specific metrics if in PR mode
+        if (isPRMode) {
+          assistantSummary.avgASTSimilarity = null;
+          assistantSummary.avgInstructionAdherence = null;
+          assistantSummary.prSuccessRate = 0;
+        }
+
+        summary.assistants[result.assistant] = assistantSummary;
       }
       
       const assistantSummary = summary.assistants[result.assistant];
@@ -272,13 +361,16 @@ class ResultsStorage {
       // Analyze runs
       const responseTimes = [];
       const qualityScores = [];
-      
+      const astSimilarityScores = [];
+      const instructionAdherenceScores = [];
+
       const metricsConfig = (this.options && this.options.metrics_config) || {};
       const agentCfg = metricsConfig.agent_success || {};
       const mode = (agentCfg.mode || 'quality');
       const threshold = (typeof agentCfg.threshold === 'number') ? agentCfg.threshold : 7;
       let ofSuccessCount = 0;
       let evalErrCount = 0;
+      let prSuccessCount = 0;
 
       for (const run of result.runs) {
         if (run.error) {
@@ -292,6 +384,22 @@ class ResultsStorage {
           
           if (run.output_quality !== null) {
             qualityScores.push(run.output_quality);
+          }
+
+          // PR-specific metrics
+          if (isPRMode) {
+            if (run.ast_similarity !== null && typeof run.ast_similarity === 'number') {
+              astSimilarityScores.push(run.ast_similarity);
+            }
+
+            if (run.instruction_adherence !== null && typeof run.instruction_adherence === 'number') {
+              instructionAdherenceScores.push(run.instruction_adherence);
+            }
+
+            // Count PR success (high AST similarity and instruction adherence)
+            if (run.ast_similarity >= threshold && run.instruction_adherence >= threshold) {
+              prSuccessCount += 1;
+            }
           }
 
           // output_format_success rate
@@ -311,10 +419,23 @@ class ResultsStorage {
         const avgTime = responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
         assistantSummary.avgResponseTime = Math.round(avgTime * 100) / 100;
       }
-      
+
       if (qualityScores.length > 0) {
         const avgQuality = qualityScores.reduce((sum, score) => sum + score, 0) / qualityScores.length;
         assistantSummary.avgQuality = Math.round(avgQuality * 100) / 100;
+      }
+
+      // Calculate PR-specific averages
+      if (isPRMode) {
+        if (astSimilarityScores.length > 0) {
+          const avgAST = astSimilarityScores.reduce((sum, score) => sum + score, 0) / astSimilarityScores.length;
+          assistantSummary.avgASTSimilarity = Math.round(avgAST * 100) / 100;
+        }
+
+        if (instructionAdherenceScores.length > 0) {
+          const avgIA = instructionAdherenceScores.reduce((sum, score) => sum + score, 0) / instructionAdherenceScores.length;
+          assistantSummary.avgInstructionAdherence = Math.round(avgIA * 100) / 100;
+        }
       }
 
       // Summary rates
@@ -328,6 +449,11 @@ class ResultsStorage {
       }
       assistantSummary.llmCallErrorRate = total ? (evalErrCount / total) : 0;
       assistantSummary.outputFormatSuccessRate = total ? (ofSuccessCount / total) : 0;
+
+      // PR-specific success rate
+      if (isPRMode) {
+        assistantSummary.prSuccessRate = total ? (prSuccessCount / total) : 0;
+      }
     }
 
     // Analyze by prompt

@@ -1,11 +1,8 @@
 {
-  "num_prompts": 2,
+  "mode": "pr_recreate",
+  "num_prs": 2,
   "parallel_agents": true,
   "parallel_runs": 4,
-  "prompts": [
-    "prompt_voyager_1.md",
-    "prompt_voyager_2.md"
-  ],
   "assistants": [
     "Claude Code",
     "Augment CLI"
@@ -14,13 +11,7 @@
   "output_filename": "voyager_benchmark_results",
   "metrics": [
     "response_time",
-    "output_quality",
-    "steps_per_task",
-    "instruction_adherence",
-    "context_adherence"
-  ],
-  "metrics_config": {
-    "agent_success": { "threshold": 7, "mode": "quality" },
-    "output_format": { "regex": "^.{1,}$" }
-  }
+    "ast_similarity",
+    "instruction_adherence"
+  ]
 }
