@@ -13,13 +13,14 @@ Usage:
 1. Replace YOUR_GITHUB_TOKEN with your GitHub personal access token
 2. Replace owner/repo-name with your target repository
 3. Adjust WEEKS_BACK as needed (default: 2)
-4. Run: python github_pr_metrics.py
+4. Optionally set END_DATE to specify when the lookback period ends (format: 'YYYY-MM-DDTHH:MM:SSZ')
+   - Leave empty or set to '' to use current time
+5. Run: python github_pr_metrics.py
 """
 
 import requests
 import json
 from datetime import datetime, timedelta
-import os
 import time
 from typing import Dict, List, Any, Optional
 
@@ -27,6 +28,7 @@ from typing import Dict, List, Any, Optional
 GITHUB_TOKEN = 'YOUR_GITHUB_TOKEN'
 REPO_NAME = 'owner/repo-name'  # Format: 'owner/repo-name'
 WEEKS_BACK = 2  # Number of weeks to look back
+END_DATE = ''  # Format: 'YYYY-MM-DDTHH:MM:SSZ' or leave empty to use current time
 
 # GitHub API configuration
 API_BASE_URL = 'https://api.github.com'
@@ -117,13 +119,33 @@ class GitHubMetricsCalculator:
     
     def calculate_date_range(self, weeks_back: int) -> tuple:
         """Calculate the date range for the specified period"""
-        end_date = datetime.now()
+        # Check if END_DATE is provided and not empty
+        if END_DATE and END_DATE.strip():
+            try:
+                # Parse the provided end date
+                end_date = datetime.fromisoformat(END_DATE.replace('Z', '+00:00'))
+            except ValueError:
+                print(f"Warning: Invalid END_DATE format '{END_DATE}'. Using current time instead.")
+                print("Expected format: 'YYYY-MM-DDTHH:MM:SSZ' (e.g., '2025-08-19T17:44:15Z')")
+                end_date = datetime.now()
+        else:
+            # Default to current time if END_DATE is empty or not provided
+            end_date = datetime.now()
+
         start_date = end_date - timedelta(weeks=weeks_back)
-        
+
         # Format dates for GitHub API (ISO 8601)
-        start_date_str = start_date.strftime('%Y-%m-%dT%H:%M:%SZ')
-        end_date_str = end_date.strftime('%Y-%m-%dT%H:%M:%SZ')
-        
+        # Convert to UTC if the datetime is naive (no timezone info)
+        if end_date.tzinfo is None:
+            end_date_str = end_date.strftime('%Y-%m-%dT%H:%M:%SZ')
+        else:
+            end_date_str = end_date.astimezone().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+        if start_date.tzinfo is None:
+            start_date_str = start_date.strftime('%Y-%m-%dT%H:%M:%SZ')
+        else:
+            start_date_str = start_date.astimezone().strftime('%Y-%m-%dT%H:%M:%SZ')
+
         return start_date_str, end_date_str
     
     def get_pull_requests(self, weeks_back: int) -> List[Dict]:
@@ -143,12 +165,14 @@ class GitHubMetricsCalculator:
         # Filter PRs by date range
         filtered_prs = []
         start_datetime = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-        
+        end_datetime = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+
         for pr in all_prs:
             created_at = datetime.fromisoformat(pr['created_at'].replace('Z', '+00:00'))
-            if created_at >= start_datetime:
+            # Check if PR was created within our time window
+            if start_datetime <= created_at <= end_datetime:
                 filtered_prs.append(pr)
-            else:
+            elif created_at < start_datetime:
                 # Since PRs are sorted by creation date (desc), we can break early
                 break
         
@@ -166,8 +190,10 @@ class GitHubMetricsCalculator:
     
     def calculate_metrics(self, weeks_back: int) -> Dict[str, Any]:
         """Calculate all metrics for the specified time period"""
-        print(f"Calculating metrics for {self.repo} over the last {weeks_back} week(s)...")
-        
+        start_date, end_date = self.calculate_date_range(weeks_back)
+        print(f"Calculating metrics for {self.repo} over {weeks_back} week(s)...")
+        print(f"Date range: {start_date} to {end_date}")
+
         prs = self.get_pull_requests(weeks_back)
         
         if not prs:
@@ -211,6 +237,8 @@ class GitHubMetricsCalculator:
             'total_prs': total_prs,
             'merged_prs': merged_prs,
             'weeks_analyzed': weeks_back,
+            'analysis_start_date': start_date,
+            'analysis_end_date': end_date,
             'prs_created_per_week': round(prs_per_week, 2),
             'prs_merged_per_week': round(merged_prs_per_week, 2),
             'average_comments_per_pr': round(avg_comments_per_pr, 2),
@@ -243,7 +271,8 @@ def main():
             print("GITHUB PR METRICS REPORT")
             print("="*50)
             print(f"Repository: {REPO_NAME}")
-            print(f"Time Period: Last {WEEKS_BACK} week(s)")
+            print(f"Time Period: {WEEKS_BACK} week(s)")
+            print(f"Date Range: {metrics['analysis_start_date']} to {metrics['analysis_end_date']}")
             print(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             print("-" * 50)
             print(f"Total Pull Requests Created: {metrics['total_prs']}")
