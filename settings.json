@@ -1,6 +1,6 @@
 {
   "mode": "pr_recreate",
-  "num_prs": 2,
+  "num_prs": 3,
   "parallel_agents": true,
   "parallel_runs": 4,
   "assistants": [
