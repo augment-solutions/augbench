@@ -19,8 +19,9 @@ Usage:
 3. Adjust WEEKS_BACK as needed (default: 2) - this applies to both before and after periods
 4. Set AUTOMATED_DATE to specify when automation was added (format: 'YYYY-MM-DDTHH:MM:SSZ')
    - Leave empty or set to '' to use current time as automation date
-5. Optionally set BRANCH to specify which Git branch to analyze (default: 'main')
-   - Leave empty or set to '' to default to 'main' branch
+5. Optionally set BRANCH to specify which Git branch to analyze
+   - Leave empty or set to '' to analyze PRs for ALL branches
+   - Set to specific branch name (e.g., 'main', 'develop') to analyze only that branch
 6. Run: python github_pr_metrics.py
 
 Output will contain metrics with prefixes:
@@ -39,17 +40,17 @@ GITHUB_TOKEN = 'YOUR_GITHUB_TOKEN'
 REPO_NAME = 'owner/repo-name'  # Format: 'owner/repo-name'
 WEEKS_BACK = 2  # Number of weeks to look back
 AUTOMATED_DATE = ''  # Format: 'YYYY-MM-DDTHH:MM:SSZ' or leave empty to use current time
-BRANCH = ''  # Base branch for PRs (leave empty to default to 'main')
+BRANCH = ''  # Base branch for PRs (leave empty to analyze ALL branches, or specify branch name)
 
 # GitHub API configuration
 API_BASE_URL = 'https://api.github.com'
 API_VERSION = 'application/vnd.github.v3+json'
 
 class GitHubMetricsCalculator:
-    def __init__(self, token: str, repo: str, branch: str = 'main'):
+    def __init__(self, token: str, repo: str, branch: str = ''):
         self.token = token
         self.repo = repo
-        self.branch = branch if branch and branch.strip() else 'main'
+        self.branch = branch.strip() if branch else ''  # Empty means all branches
         self.headers = {
             'Authorization': f'token {token}',
             'Accept': API_VERSION,
@@ -219,9 +220,12 @@ class GitHubMetricsCalculator:
         params = {
             'state': 'all',
             'sort': 'created',
-            'direction': 'desc',
-            'base': self.branch
+            'direction': 'desc'
         }
+
+        # Only add base branch filter if a specific branch is specified
+        if self.branch:
+            params['base'] = self.branch
         
         all_prs = self.get_all_pages(url, params)
         
@@ -369,7 +373,8 @@ class GitHubMetricsCalculator:
     def calculate_comparative_metrics(self, weeks_back: int) -> Dict[str, Any]:
         """Calculate comparative metrics for before and after automation periods"""
         print(f"Starting comparative analysis for {self.repo}...")
-        print(f"Branch: {self.branch}")
+        branch_info = self.branch if self.branch else "ALL branches"
+        print(f"Branch: {branch_info}")
         print(f"Weeks back for each period: {weeks_back}")
 
         # Calculate date ranges for both periods
@@ -396,7 +401,7 @@ class GitHubMetricsCalculator:
 
         # Add metadata
         combined_metrics['automation_date'] = AUTOMATED_DATE if AUTOMATED_DATE and AUTOMATED_DATE.strip() else datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
-        combined_metrics['branch_analyzed'] = self.branch
+        combined_metrics['branch_analyzed'] = self.branch if self.branch else "ALL branches"
         combined_metrics['analysis_type'] = 'comparative'
 
         return combined_metrics
@@ -426,7 +431,7 @@ def main():
             print("GITHUB PR METRICS COMPARATIVE ANALYSIS REPORT")
             print("="*70)
             print(f"Repository: {REPO_NAME}")
-            print(f"Branch: {metrics.get('branch_analyzed', 'main')}")
+            print(f"Branch: {metrics.get('branch_analyzed', 'ALL branches')}")
             print(f"Automation Date: {metrics.get('automation_date', 'Not specified')}")
             print(f"Analysis Period: {WEEKS_BACK} week(s) for each comparison period")
             print(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
