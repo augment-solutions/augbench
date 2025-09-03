@@ -1,68 +1,31 @@
 {
   "name": "augbench",
-  "version": "1.0.0",
-  "description": "A cross-platform Node.js CLI benchmarking tool for comparing performance metrics across different AI coding assistants",
-  "main": "src/index.js",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "AI Coding Assistant Benchmarking CLI",
   "bin": {
-    "augbench": "./bin/augbench.js"
+    "augbench": "bin/augbench.js"
   },
   "scripts": {
-    "start": "node src/index.js",
-    "test": "mocha test/**/*.test.js",
-    "test:watch": "jest --watch",
-    "lint": "eslint src/**/*.js",
-    "lint:fix": "eslint src/**/*.js --fix"
-  },
-  "keywords": [
-    "cli",
-    "benchmark",
-    "ai",
-    "coding-assistant",
-    "performance",
-    "cross-platform"
-  ],
-  "author": "Your Name",
-  "license": "MIT",
-  "dependencies": {
-    "@babel/parser": "^7.28.3",
-    "@babel/traverse": "^7.28.3",
-    "@babel/types": "^7.28.2",
-    "@napi-rs/canvas": "^0.1.76",
-    "acorn": "^8.15.0",
-    "acorn-walk": "^8.3.4",
-    "ajv": "^8.17.1",
-    "axios": "^1.6.0",
-    "chalk": "^4.1.2",
-    "chart.js": "^4.5.0",
-    "chartjs-node-canvas": "^5.0.0",
-    "commander": "^11.1.0",
-    "dotenv": "^16.3.1",
-    "esprima": "^4.0.1",
-    "fs-extra": "^11.1.1",
-    "inquirer": "^9.2.12",
-    "joi": "^17.11.0",
-    "ora": "^7.0.1",
-    "typescript": "^5.9.2"
-  },
-  "devDependencies": {
-    "chai": "^4.3.10",
-    "chai-as-promised": "^8.0.1",
-    "eslint": "^8.54.0",
-    "eslint-config-standard": "^17.1.0",
-    "eslint-plugin-import": "^2.29.0",
-    "eslint-plugin-node": "^11.1.0",
-    "eslint-plugin-promise": "^6.1.1",
-    "mocha": "^10.2.0"
+    "start": "node bin/augbench.js",
+    "help": "node bin/augbench.js help",
+    "validate": "node bin/augbench.js validate",
+    "benchmark": "node bin/augbench.js benchmark",
+    "test": "node --test src/tests/**/*.test.js",
+    "pr-metrics": "python3 roi_scripts/github_pr_metrics.py"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=22.0.0"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/yourusername/augbench.git"
-  },
-  "bugs": {
-    "url": "https://github.com/yourusername/augbench/issues"
-  },
-  "homepage": "https://github.com/yourusername/augbench#readme"
+  "dependencies": {
+    "axios": "^1.0.0",
+    "chart.js": "^4.0.0",
+    "chartjs-node-canvas": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "fs-extra": "^11.0.0",
+    "joi": "^17.0.0",
+    "simple-git": "^3.0.0",
+    "web-tree-sitter": "^0.24.7"
+  }
 }

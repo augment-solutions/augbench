@@ -1,17 +1,39 @@
 {
-  "mode": "pr_recreate",
-  "num_prs": 3,
+  "agents": ["Augment CLI", "Claude Code", "Cursor CLI"],
+  "agent_config": {
+    "Augment CLI": {
+      "commandTemplate": "auggie -p --compact -if \"{prompt}\"",
+      "timeout": 1200000
+    },
+    "Claude Code": {
+      "commandTemplate": "cat \"{prompt}\" | claude -p",
+      "timeout": 1200000
+    },
+    "Cursor CLI": {
+      "commandTemplate": "cat \"{prompt}\" | cursor-agent -p",
+      "timeout": 1200000
+    }
+  },
+  "runs_per_prompt": 1,
   "parallel_agents": true,
-  "parallel_runs": 4,
-  "assistants": [
-    "Claude Code",
-    "Augment CLI"
-  ],
-  "runs_per_prompt": 2,
-  "output_filename": "voyager_benchmark_results",
+  "output_filename": "benchmark_results",
+  "stage_dir": "./stage",
+  "repo_url": "https://github.com/mongodb/mongo.git",
+  "branch": "master",
   "metrics": [
     "response_time",
+    "diff_metrics",
     "ast_similarity",
+    "completeness",
+    "technical_correctness",
+    "functional_correctness",
+    "clarity",
     "instruction_adherence"
-  ]
+  ],
+  "mode": "PR_Recreate",
+  "PR_Recreate": {
+    "generate_prompts": true,
+    "num_prs": 3
+  }
 }
+

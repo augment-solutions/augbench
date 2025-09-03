@@ -1,0 +1,25 @@
+{
+  "agents": ["Augment CLI", "Claude Code", "Cursor CLI"],
+  "runs_per_prompt": 1,
+  "parallel_agents": "false",
+  "output_filename": "benchmark_results",
+  "stage_dir": "./stage",
+  "repo_url": "https://github.com/owner/repo.git",
+  "branch": "main",
+  "metrics": [
+    "response_time",
+    "diff_metrics",
+    "ast_similarity",
+    "completeness",
+    "technical_correctness",
+    "functional_correctness",
+    "clarity",
+    "instruction_adherence"
+  ],
+  "mode": "PR_Recreate",
+  "PR_Recreate": {
+    "num_prs": 3,
+    "generate_prompts": true
+  }
+}
+

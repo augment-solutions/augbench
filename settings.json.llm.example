@@ -1,0 +1,27 @@
+{
+  "agents": ["Augment CLI", "Claude Code", "Cursor CLI"],
+  "runs_per_prompt": 2,
+  "parallel_agents": "true",
+  "output_filename": "benchmark_results",
+  "stage_dir": "./stage",
+  "repo_path": "./", 
+  "branch": "main",
+  "metrics": [
+    "response_time",
+    "diff_metrics",
+    "completeness",
+    "technical_correctness",
+    "functional_correctness",
+    "clarity",
+    "instruction_adherence"
+  ],
+  "mode": "LLM_Evaluator",
+  "LLM_Evaluator": {
+    "generate_prompts": "true",
+    "prompt_topics": [
+      "Create documentation for the entrypoint in markdown format",
+      "Create unit tests for the entrypoint"
+    ]
+  }
+}
+

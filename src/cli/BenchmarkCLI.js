@@ -1,494 +1,186 @@
-/**
- * Main CLI interface for the Augbench tool
- */
+import { BenchmarkRunner } from "./BenchmarkRunner.js";
+import { Logger } from "../utils/Logger.js";
 
-const { prompt } = require('../utils/inquirerCompat');
-const chalk = require('chalk');
-const { getOra } = require('../utils/oraCompat');
-const { Logger } = require('../utils/Logger');
-const { FileSystem } = require('../utils/FileSystem');
-const { ErrorHandler } = require('../utils/ErrorHandler');
-const { Validator } = require('../utils/Validator');
-const { Platform } = require('../utils/Platform');
-const { ResultsStorage } = require('../utils/ResultsStorage');
-const { RepositorySelector } = require('./RepositorySelector');
-const { EnvironmentConfig } = require('../config/EnvironmentConfig');
-const { SettingsManager } = require('../config/SettingsManager');
-const { BenchmarkRunner } = require('./BenchmarkRunner');
-const { AdapterFactory } = require('../adapters/AdapterFactory');
-
-class BenchmarkCLI {
-  constructor(options = {}) {
-    this.options = options;
-    this.logger = new Logger(options);
-    this.fs = new FileSystem(options);
-    this.errorHandler = new ErrorHandler(options);
-    this.validator = new Validator(options);
-    this.platform = new Platform(options);
-    this.resultsStorage = new ResultsStorage(options);
-    this.repositorySelector = new RepositorySelector(options);
-    this.environmentConfig = new EnvironmentConfig(options);
-    this.settingsManager = new SettingsManager({ ...options, settingsPath: options.settings || options.settingsPath });
-    this.benchmarkRunner = new BenchmarkRunner(options);
+export class BenchmarkCLI {
+  constructor() {
+    this.logger = new Logger();
   }
 
-  /**
-   * Main benchmark workflow
-   */
-  async run() {
-    try {
-      this.logger.info(chalk.bold('🏃 Starting Augbench - AI Assistant Benchmarking Tool'));
-
-      // Step 1: Environment Configuration
-      this.logger.step(1, 8, 'Environment Configuration');
-      await this.environmentConfig.configure();
-
-      // Step 2: Settings Management
-      this.logger.step(2, 8, 'Settings Management');
-      await this.settingsManager.ensureSettings();
-
-      // Step 3: Settings Validation
-      this.logger.step(3, 8, 'Settings Validation');
-      const cliOptions = {
-        repoUrl: this.options.repoUrl,
-        repoPath: this.options.repoPath || this.options.repository
-      };
-      const settings = await this.settingsManager.validateSettings(cliOptions);
-
-      // Step 4: Mode-specific Setup
-      this.logger.step(4, 8, 'Mode-specific Setup');
-      const mode = settings.mode || 'standard';
-      let repositoryPath = null;
-
-      if (mode === 'pr_recreate') {
-        // PR recreation mode - validate target repository and get user input
-        await this.setupPRRecreationMode(settings);
-        repositoryPath = null; // Not used in PR recreation mode
-      } else {
-        // Standard mode - repository selection
-        const repoUrl = this.options.repoUrl || settings.repo_url || '';
-        const repoPathOpt = this.options.repoPath || this.options.repository || settings.repo_path || '';
-        // Enforce mutual exclusivity if both are set
-        if (repoUrl && repoPathOpt) {
-          throw new Error('Exactly one of --repo-url or --repo-path/--repository must be provided');
-        }
-        // If neither is provided and no repoUrl, fall back to interactive/local selection
-        repositoryPath = repoPathOpt;
-        if (!repoUrl && !repoPathOpt) {
-          repositoryPath = await this.repositorySelector.selectRepository(this.options.repository);
-        }
-      }
-
-      // Assistant availability check before confirmation
-      this.logger.info('Checking assistant availability...');
-      const adapterFactory = new AdapterFactory(this.options);
-      const availability = await adapterFactory.checkAdapterAvailability(settings.assistants);
-      const unavailable = Object.entries(availability)
-        .filter(([_, info]) => !info.available)
-        .map(([name, info]) => `${name}${info.error ? ` (${info.error})` : ''}`);
-      if (unavailable.length > 0) {
-        throw new Error(`The following assistants are not available or failed to initialize: ${unavailable.join(', ')}`);
-      }
-      Object.entries(availability).forEach(([name, info]) => {
-        const versionText = info.version ? ` (version: ${info.version})` : '';
-        this.logger.success(`${name} is available${versionText}`);
-      });
-
-      // Step 5: Final Confirmation
-      this.logger.step(5, 8, 'Final Confirmation');
-      const confirmed = await this.confirmConfiguration(repositoryPath, settings);
-
-      if (!confirmed) {
-        this.logger.info('Benchmark cancelled by user');
-        return;
-      }
-
-      // Step 6: Benchmark Execution
-      this.logger.step(6, 8, 'Benchmark Execution');
-      const results = await this.benchmarkRunner.runBenchmarks(repositoryPath, settings);
-
-      // Step 7: Results Storage
-      this.logger.step(7, 8, 'Results Storage');
-      await this.saveResults(results, settings.output_filename, settings);
-
-      // Step 8: Completion
-      this.logger.step(8, 8, 'Completion');
-      this.logger.success(`Benchmark completed! Results saved to ${settings.output_filename}`);
-
-      // Print summary to CLI
-      try {
-        const summaryText = this.formatSummary(results, settings);
-        if (summaryText) {
-          console.log('\n' + summaryText);
-        }
-      } catch (e) {
-        this.logger.warn('Failed to render summary:', e.message);
-      }
-
-    } catch (error) {
-      this.logger.error('Benchmark failed:', error.message);
-      if (this.options.verbose) {
-        this.logger.error('Stack trace:', error.stack);
-      }
-      throw error;
+  async run(args) {
+    const cmd = (args[0] || "help").toLowerCase();
+    switch (cmd) {
+      case "benchmark":
+        return this.benchmark();
+      case "validate":
+        return this.validate();
+      case "report":
+        return this.report(args.slice(1));
+      case "help":
+      default:
+        return this.help();
     }
   }
 
-  /**
-   * Initialize configuration files
-   */
-  async init() {
-    try {
-      this.logger.info(chalk.bold('🔧 Initializing Augbench configuration'));
-
-      await this.settingsManager.createTemplateSettings(this.options.force);
-      await this.environmentConfig.createTemplateEnv(this.options.force);
-
-      this.logger.success('Configuration files created successfully!');
-      this.logger.info('Next steps:');
-      this.logger.info('1. Update .env with your LLM endpoint and API key');
-      this.logger.info('2. Customize settings.json with your prompts and preferences');
-      this.logger.info('3. Run: augbench benchmark');
-
-    } catch (error) {
-      this.logger.error('Initialization failed:', error.message);
-      throw error;
-    }
+  async benchmark() {
+    const { SettingsManager } = await import("../config/SettingsManager.js");
+    const settings = await SettingsManager.loadFromFile("settings.json");
+    const runner = new BenchmarkRunner(this.logger);
+    await runner.run(settings);
   }
 
-  /**
-   * Validate configuration without running benchmarks
-   */
   async validate() {
     try {
-      this.logger.info(chalk.bold('✅ Validating Augbench configuration'));
-
-      // Validate environment
-      await this.environmentConfig.validate();
-      this.logger.success('Environment configuration is valid');
-
-      // Validate settings with CLI options context
-      const cliOptions = {
-        repoUrl: this.options.repoUrl,
-        repoPath: this.options.repoPath || this.options.repository
-      };
-      const settings = await this.settingsManager.validateSettings(cliOptions);
-      this.logger.success('Settings configuration is valid');
-
-      const mode = settings.mode || 'standard';
-      this.logger.info(`Validation mode: ${mode}`);
-
-      // Git installation and connectivity
-      const { GitManager } = require('../utils/GitManager');
-      const git = new GitManager(this.options);
-      try {
-        await git.ensureMinVersion('2.30.0');
-        this.logger.success('Git installation OK (>= 2.30.0)');
-      } catch (e) {
-        this.logger.error(`Git installation/version check failed: ${e.message}`);
-        throw e;
-      }
-
-      // Mode-specific validation
-      if (mode === 'standard') {
-        // Standard mode validations
-        const publicProbe = 'https://github.com/chromium/chromium';
-        const publicOk = await git.testConnectivity(publicProbe);
-        if (publicOk) {
-          this.logger.success(`Git connectivity OK to ${publicProbe}`);
-        } else {
-          this.logger.warn(`Git connectivity failed to ${publicProbe}`);
-        }
-
-        if (this.options.repoUrl) {
-          const ok = await git.testConnectivity(this.options.repoUrl, process.env.GH_TOKEN || process.env.GIT_TOKEN);
-          if (ok) this.logger.success(`Remote repository reachable: ${this.options.repoUrl}`);
-          else this.logger.warn(`Cannot reach remote repository: ${this.options.repoUrl}. If private, configure GH_TOKEN/GIT_TOKEN or SSH keys.`);
-        }
-
-        // Validate repository path if provided; otherwise validate home access
-        const repoPathOpt = this.options.repoPath || this.options.repository;
-        if (repoPathOpt) {
-          const absPath = this.repositorySelector.fs.getAbsolutePath(repoPathOpt.trim());
-          await this.repositorySelector.validateRepository(absPath);
-          this.logger.success('Repository path validation passed');
-        } else {
-          await this.validator.validateHomeAccess();
-          this.logger.success('User home directory access OK');
-        }
-
-      } else if (mode === 'pr_recreate') {
-        // PR recreation mode validations
-        const targetRepoUrl = cliOptions.repoUrl || settings.target_repo_url;
-        if (targetRepoUrl) {
-          const ok = await git.testConnectivity(targetRepoUrl, process.env.GH_TOKEN || process.env.GIT_TOKEN);
-          if (ok) {
-            this.logger.success(`Target repository reachable: ${targetRepoUrl}`);
-          } else {
-            this.logger.warn(`Cannot reach target repository: ${targetRepoUrl}. If private, configure GH_TOKEN/GIT_TOKEN or SSH keys.`);
-          }
-        }
-
-        // Validate LLM access for prompt generation
-        const { PromptGenerator } = require('../utils/PromptGenerator');
-        const promptGenerator = new PromptGenerator(this.options);
-        const llmAvailable = await promptGenerator.validateLLMAccess();
-
-        if (llmAvailable) {
-          this.logger.success('LLM access for prompt generation validated');
-        } else {
-          this.logger.warn('LLM not accessible - prompt generation may fail');
-        }
-      }
-
-      // Validate CLI assistants (Augment CLI, Claude Code, and Cursor CLI) initialization
-      this.logger.info('Checking CLI assistant availability...');
-      const adapterFactory = new AdapterFactory(this.options);
-      const toCheck = ['Augment CLI', 'Claude Code', 'Cursor CLI'];
-      const check = await adapterFactory.checkAdapterAvailability(toCheck);
-
-      const requiredMissing = [];
-      for (const name of toCheck) {
-        const info = check[name];
-        if (info && info.available) {
-          const versionText = info.version ? ` (version: ${info.version})` : '';
-          this.logger.success(`${name} is available${versionText}`);
-        } else {
-          const errText = info && info.error ? `: ${info.error}` : '';
-          if (settings.assistants && settings.assistants.includes(name)) {
-            requiredMissing.push(`${name}${errText}`);
-          } else {
-            this.logger.warn(`${name} is not available${errText}`);
-          }
-        }
-      }
-
-      if (requiredMissing.length > 0) {
-        throw new Error(`Required assistants not available or failed to initialize: ${requiredMissing.join(', ')}`);
-      }
-
-      this.logger.info('Configuration summary:');
-      this.logger.info(`- Mode: ${mode}`);
-
-      if (mode === 'standard') {
-        this.logger.info(`- Prompts: ${settings.num_prompts}`);
-      } else if (mode === 'pr_recreate') {
-        this.logger.info(`- Target repository: ${settings.target_repo_url}`);
-        this.logger.info(`- Number of PRs: ${settings.num_prs}`);
-      }
-
-      this.logger.info(`- Assistants: ${settings.assistants.join(', ')}`);
-      this.logger.info(`- Runs per prompt: ${settings.runs_per_prompt}`);
-      this.logger.info(`- Parallel runs: ${settings.parallel_runs || 1}`);
-      this.logger.info(`- Parallel agents: ${settings.parallel_agents !== false ? 'enabled' : 'disabled'}`);
-      this.logger.info(`- Output file: ${settings.output_filename}`);
-
-    } catch (error) {
-      this.logger.error('Validation failed:', error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Show final confirmation before running benchmarks
-   */
-  async confirmConfiguration(repositoryPath, settings) {
-    const mode = settings.mode || 'standard';
-
-    this.logger.info('\n' + chalk.bold('📋 Configuration Summary:'));
-    this.logger.info(`Mode: ${mode}`);
-
-    if (mode === 'standard') {
-      this.logger.info(`Repository: ${repositoryPath}`);
-      this.logger.info(`Prompts: ${settings.prompts.join(', ')}`);
-    } else if (mode === 'pr_recreate') {
-      const targetRepoUrl = this.options.repoUrl || settings.target_repo_url;
-      this.logger.info(`Target repository: ${targetRepoUrl}`);
-      this.logger.info(`Number of PRs: ${settings.num_prs}`);
-    }
-
-    this.logger.info(`Assistants: ${settings.assistants.join(', ')}`);
-    this.logger.info(`Runs per prompt: ${settings.runs_per_prompt}`);
-    this.logger.info(`Parallel runs: ${settings.parallel_runs || 1}`);
-    this.logger.info(`Parallel agents: ${settings.parallel_agents !== false ? 'enabled' : 'disabled'}`);
-    this.logger.info(`Output file: ${settings.output_filename}`);
-
-    const { confirmed } = await prompt([
-      {
-        type: 'confirm',
-        name: 'confirmed',
-        message: `Do you want to proceed with the ${mode} benchmark?`,
-        default: true
-      }
-    ]);
-
-    return confirmed;
-  }
-
-  /**
-   * Format a short summary string for CLI output
-   * opts: { color?: boolean }
-   */
-  formatSummary(results, settings, opts = {}) {
-    const color = opts.color !== false; // default true
-    const pct = (n) => `${(n * 100).toFixed(1)}%`;
-    const c = (s, fn) => (color ? fn(String(s)) : String(s));
-    const rateColor = (r) => (r >= 0.8 ? chalk.green(pct(r)) : r >= 0.5 ? chalk.yellow(pct(r)) : chalk.red(pct(r)));
-    const rateColorInverse = (r) => (r >= 0.8 ? chalk.red(pct(r)) : r >= 0.5 ? chalk.yellow(pct(r)) : chalk.green(pct(r)));
-    try {
-      const summary = this.resultsStorage.withOptions
-        ? this.resultsStorage.withOptions({ metrics_config: settings.metrics_config })
-        : new ResultsStorage({ metrics_config: settings.metrics_config });
-      const s = summary.generateSummary(results);
-      const lines = [];
-      lines.push(c('Summary per assistant:', chalk.bold));
-      for (const [assistant, a] of Object.entries(s.assistants)) {
-        const completed = color ? rateColor(a.taskCompletionRate) : pct(a.taskCompletionRate);
-        const agentSuccess = color ? rateColor(a.agentSuccessRate) : pct(a.agentSuccessRate);
-        const formatOk = color ? rateColor(a.outputFormatSuccessRate) : pct(a.outputFormatSuccessRate);
-        const llmErr = color ? rateColorInverse(a.llmCallErrorRate) : pct(a.llmCallErrorRate);
-        const parts = [
-          `- ${c(assistant, chalk.cyan)}:`,
-          `${c('runs', chalk.dim)}=${a.runs}`,
-          `${c('completed', chalk.dim)}=${completed}`,
-          `${c('agent_success', chalk.dim)}=${agentSuccess}`,
-        ];
-        if (a.avgResponseTime != null) parts.push(`${c('avg_time', chalk.dim)}=${c(a.avgResponseTime + 's', chalk.magenta)}`);
-        if (a.avgQuality != null) parts.push(`${c('avg_quality', chalk.dim)}=${c(a.avgQuality, chalk.blue)}`);
-        parts.push(`${c('format_ok', chalk.dim)}=${formatOk}`);
-        parts.push(`${c('llm_err', chalk.dim)}=${llmErr}`);
-        lines.push(parts.join(' '));
-      }
-      return lines.join('\n');
+      const { SettingsManager } = await import("../config/SettingsManager.js");
+      const settings = await SettingsManager.loadFromFile("settings.json");
+      this.logger.info("settings.json loaded and basic schema validated");
+      const { Validator } = await import("./Validator.js");
+      const validator = new Validator(this.logger);
+      const res = await validator.runAll(settings);
+      if (!res.ok) process.exitCode = 1;
     } catch (e) {
-      this.logger.warn('Unable to compute summary for CLI:', e.message);
-      return '';
+      this.logger.error("Validation failed: " + (e.message || e));
+      process.exitCode = 1;
     }
   }
 
-  /**
-   * Setup PR recreation mode with user interaction
-   */
-  async setupPRRecreationMode(settings) {
-    this.logger.info('Setting up PR Recreation Mode...');
-
-    // Get repository URL from CLI argument or settings
-    const targetRepoUrl = this.options.repoUrl || settings.target_repo_url;
-    if (!targetRepoUrl) {
-      throw new Error('Repository URL is required for PR recreation mode. Provide either --repo-url CLI argument or target_repo_url in settings.json');
-    }
-
-    this.logger.info(`Target repository: ${targetRepoUrl}`);
-
-    // Get number of PRs if not specified
-    let numPRs = settings.num_prs;
-    if (!numPRs) {
-      const { num_prs } = await prompt([
-        {
-          type: 'input',
-          name: 'num_prs',
-          message: 'How many recent PRs would you like to recreate?',
-          default: '5',
-          validate: (input) => {
-            const num = parseInt(input);
-            if (isNaN(num) || num < 1 || num > 50) {
-              return 'Please enter a number between 1 and 50';
-            }
-            return true;
-          }
-        }
-      ]);
-      numPRs = parseInt(num_prs);
-      settings.num_prs = numPRs;
-    }
-
-    this.logger.info(`Will recreate ${numPRs} recent PRs`);
-
-    // Validate LLM access for prompt generation
-    const { PromptGenerator } = require('../utils/PromptGenerator');
-    const promptGenerator = new PromptGenerator(this.options);
-
-    this.logger.info('Validating LLM access for prompt generation...');
-    const llmAvailable = await promptGenerator.validateLLMAccess();
-
-    if (!llmAvailable) {
-      const llmConfig = promptGenerator.getLLMConfig();
-      this.logger.warn(`LLM not accessible at ${llmConfig.endpoint}`);
-      this.logger.warn('Please ensure your LLM service is running and accessible');
-
-      const { proceed } = await prompt([
-        {
-          type: 'confirm',
-          name: 'proceed',
-          message: 'Do you want to proceed anyway? (Prompt generation will fail)',
-          default: false
-        }
-      ]);
-
-      if (!proceed) {
-        throw new Error('PR recreation mode requires LLM access for prompt generation');
-      }
-    } else {
-      this.logger.success('LLM access validated');
-    }
-
-    // Validate Git access
-    const { GitManager } = require('../utils/GitManager');
-    const git = new GitManager(this.options);
-
+  async report(args) {
     try {
-      await git.ensureMinVersion('2.30.0');
-      this.logger.success('Git installation validated');
-    } catch (error) {
-      throw new Error(`Git validation failed: ${error.message}`);
-    }
+      const { ResultsAnalyzer } = await import("../reporting/ResultsAnalyzer.js");
+      const results = await ResultsAnalyzer.loadLatest();
+      const summary = ResultsAnalyzer.summarizeByAgent(results);
+      const analysis = ResultsAnalyzer.generateComparativeAnalysis(summary);
 
-    // Test repository connectivity
-    this.logger.info('Testing repository connectivity...');
-    const token = process.env.GH_TOKEN || process.env.GIT_TOKEN;
-    const canConnect = await git.testConnectivity(targetRepoUrl, token);
+      console.log("\n📊 Benchmark Results Summary");
+      console.log("=" .repeat(50));
+      console.log(`Total runs: ${results.metadata?.totalRuns || 0}`);
+      console.log(`Mode: ${results.metadata?.mode || "unknown"}`);
+      console.log(`Timestamp: ${results.metadata?.timestamp || "unknown"}\n`);
 
-    if (!canConnect) {
-      this.logger.warn('Cannot connect to target repository');
-      this.logger.warn('Please check the repository URL and your authentication');
+      // Comparative analysis
+      if (analysis) {
+        console.log("🏆 Performance Analysis:");
+        console.log(`  Fastest: ${analysis.fastest_agent}`);
+        console.log(`  Slowest: ${analysis.slowest_agent}`);
+        console.log(`  Speed difference: ${analysis.speed_difference}s\n`);
 
-      const { proceed } = await prompt([
-        {
-          type: 'confirm',
-          name: 'proceed',
-          message: 'Do you want to proceed anyway?',
-          default: false
+        if (Object.keys(analysis.best_performers).length > 0) {
+          console.log("🥇 Best Performers by Metric:");
+          for (const [metric, data] of Object.entries(analysis.best_performers)) {
+            const metricName = metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            console.log(`  ${metricName}: ${data.agent} (${data.score})`);
+          }
+          console.log();
         }
-      ]);
-
-      if (!proceed) {
-        throw new Error('Cannot proceed without repository access');
       }
-    } else {
-      this.logger.success('Repository connectivity validated');
+
+      console.log("📈 Detailed Agent Performance:");
+      console.log("Agent".padEnd(15) + "Runs".padEnd(6) + "Avg Time".padEnd(10) + "Min/Max".padEnd(12) + "Std Dev".padEnd(10) + "Quality Scores");
+      console.log("-".repeat(80));
+
+      for (const s of summary) {
+        let line = `${s.agent.padEnd(15)}${s.runs.toString().padEnd(6)}${s.avg_response_time}s`.padEnd(25);
+        line += `${s.min_response_time}/${s.max_response_time}s`.padEnd(12);
+        line += `${s.std_response_time}s`.padEnd(10);
+
+        // Add quality scores if available
+        const qualityScores = [];
+        if (s.avg_completeness) qualityScores.push(`C:${s.avg_completeness}`);
+        if (s.avg_technical_correctness) qualityScores.push(`T:${s.avg_technical_correctness}`);
+        if (s.avg_functional_correctness) qualityScores.push(`F:${s.avg_functional_correctness}`);
+        if (s.avg_clarity) qualityScores.push(`Cl:${s.avg_clarity}`);
+        if (s.avg_ast_similarity) qualityScores.push(`AST:${s.avg_ast_similarity}`);
+
+        if (qualityScores.length > 0) {
+          line += qualityScores.join(" ");
+        }
+
+        console.log(line);
+      }
+
+      // Export options
+      if (args.includes("--export-csv")) {
+        const csvPath = "./results/benchmark_summary.csv";
+        await ResultsAnalyzer.exportToCSV(summary, csvPath);
+        console.log(`\n💾 Exported CSV: ${csvPath}`);
+      }
+
+      if (args.includes("--export-md")) {
+        const mdPath = "./results/benchmark_report.md";
+        await ResultsAnalyzer.exportToMarkdown(summary, analysis, mdPath);
+        console.log(`\n📝 Exported Markdown: ${mdPath}`);
+      }
+
+      if (args.includes("--charts")) {
+        const { ChartGenerator } = await import("../reporting/ChartGenerator.js");
+        const chartGen = new ChartGenerator();
+
+        // Generate all metric charts
+        const outputBaseName = results.metadata?.output_filename || "benchmark_results";
+        const chartPaths = await chartGen.generateAllMetricCharts(results, "./results", outputBaseName);
+
+        if (chartPaths.length > 0) {
+          console.log(`\n📈 Generated ${chartPaths.length} charts:`);
+          chartPaths.forEach(path => console.log(`  ${path}`));
+        } else {
+          console.log(`\n📈 No charts generated (no metric data available)`);
+        }
+      }
+
+      console.log(`\n💡 Tip: Use --charts, --export-csv, or --export-md for additional output formats`);
+    } catch (e) {
+      this.logger.error("Report failed: " + (e.message || e));
+      process.exitCode = 1;
     }
   }
 
-  /**
-   * Save benchmark results to file
-   */
-  async saveResults(results, outputFilename, settings) {
-    const metadata = {
-      platform: this.platform.getPlatformInfo(),
-      timestamp: new Date().toISOString(),
-      settings // include full settings (contains metrics_config)
-    };
+  help() {
+    const text = `
+augbench - AI Coding Assistant Benchmarking CLI
 
-    // Validate output_filename rules before writing
-    if (typeof outputFilename !== 'string' || !outputFilename.trim()) {
-      throw new Error('settings.output_filename must be a non-empty string');
-    }
-    if (outputFilename.toLowerCase().endsWith('.json')) {
-      throw new Error('settings.output_filename must not include a .json suffix; it will be added automatically');
-    }
+Commands:
+  augbench benchmark                    Execute benchmarking based on settings.json mode
+  augbench validate                     Check prerequisites and output consolidated report
+  augbench report [options]             Summarize latest results with various output formats
+  augbench help                         Show comprehensive examples for both modes
 
-    await this.resultsStorage.saveResults(results, outputFilename, metadata);
+Report Options:
+  --charts                              Generate PNG charts for all metrics
+  --export-csv                          Export summary data to CSV format
+  --export-md                           Export detailed report to Markdown format
+
+Configuration:
+  All configuration is via settings.json at the repository root.
+
+Examples:
+  # LLM_Evaluator mode
+  - Put your repo_path or repo_url in settings.json, mode="LLM_Evaluator"
+  - Optional: add prompts/*.md or enable generate_prompts
+  $ augbench benchmark
+
+  # PR_Recreate mode
+  - Put your repo_url in settings.json, mode="PR_Recreate"
+  $ augbench benchmark
+
+  # Reporting with various formats
+  $ augbench report                     # Basic console summary
+  $ augbench report --charts           # Generate visual charts
+  $ augbench report --export-csv       # Export to CSV
+  $ augbench report --export-md        # Export to Markdown
+  $ augbench report --charts --export-csv --export-md  # All formats
+
+  # Validate environment
+  $ augbench validate
+
+Features:
+  ✅ Two benchmark modes: LLM_Evaluator and PR_Recreate
+  ✅ Multiple metrics: response time, code quality, AST similarity
+  ✅ Parallel agent execution for faster benchmarks
+  ✅ Visual charts with agent-specific colors
+  ✅ Statistical analysis (mean, std dev, min/max)
+  ✅ Comparative analysis between agents
+  ✅ Multiple export formats (CSV, Markdown, PNG)
+`;
+    console.log(text);
   }
 }
 
-module.exports = { BenchmarkCLI };
