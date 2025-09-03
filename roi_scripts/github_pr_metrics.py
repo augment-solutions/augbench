@@ -36,8 +36,8 @@ import time
 from typing import Dict, List, Any, Optional
 
 # Configuration - Replace these values
-GITHUB_TOKEN = 'YOUR_GITHUB_TOKEN'
-REPO_NAME = 'owner/repo-name'  # Format: 'owner/repo-name'
+GITHUB_TOKEN = ''
+REPO_NAME = ''  # Format: 'owner/repo-name'
 WEEKS_BACK = 2  # Number of weeks to look back
 AUTOMATED_DATE = ''  # Format: 'YYYY-MM-DDTHH:MM:SSZ' or leave empty to use current time
 BRANCH = ''  # Base branch for PRs (leave empty to analyze ALL branches, or specify branch name)

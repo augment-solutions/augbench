@@ -1,14 +1,10 @@
 # Augbench specific files to ignore
-settings2.json
-augbench.md
-AUGMENT_AGENT_RULES.md
-internal.md
-augbench1.md
-metrics.md
+rearchitecture_prompt.md
+stage/
+results/
+prompts/
+archive/
 .env
-results
-prompt_*.md
-voyager_*.json
 .DS_Store
 .gitkeep
 
