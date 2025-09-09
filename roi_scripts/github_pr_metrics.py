@@ -58,6 +58,17 @@ class GitHubMetricsCalculator:
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
+
+    def is_bot_user(self, user: Dict) -> bool:
+        """Check if a user is a bot based on login or type"""
+        if not user:
+            return True
+
+        login = user.get('login', '')
+        user_type = user.get('type', '')
+
+        # Check if login ends with [bot] or type is Bot
+        return login.endswith('[bot]') or user_type == 'Bot'
     
     def handle_rate_limit(self, response):
         """Handle GitHub API rate limiting"""
@@ -254,6 +265,189 @@ class GitHubMetricsCalculator:
         """Get all review comments for a specific pull request"""
         url = f"{API_BASE_URL}/repos/{self.repo}/pulls/{pr_number}/comments"
         return self.get_all_pages(url)
+
+    def get_pr_reviews(self, pr_number: int) -> List[Dict]:
+        """Get all reviews for a specific pull request"""
+        url = f"{API_BASE_URL}/repos/{self.repo}/pulls/{pr_number}/reviews"
+        return self.get_all_pages(url)
+
+    def get_pr_commits(self, pr_number: int) -> List[Dict]:
+        """Get all commits for a specific pull request"""
+        url = f"{API_BASE_URL}/repos/{self.repo}/pulls/{pr_number}/commits"
+        return self.get_all_pages(url)
+
+    def get_time_to_first_comment(self, pr: Dict) -> Optional[float]:
+        """Calculate time to first comment for a PR in hours"""
+        pr_number = pr['number']
+        pr_author = pr['user']['login']
+        pr_created_at = datetime.fromisoformat(pr['created_at'].replace('Z', '+00:00'))
+
+        earliest_comment_time = None
+
+        # Get all types of comments/reviews
+        reviews = self.get_pr_reviews(pr_number)
+        review_comments = self.get_pr_review_comments(pr_number)
+        issue_comments = self.get_pr_comments(pr_number)
+
+        # Check reviews
+        for review in reviews:
+            if (review.get('user') and
+                not self.is_bot_user(review['user']) and
+                review['user']['login'] != pr_author and
+                review.get('created_at')):
+
+                review_time = datetime.fromisoformat(review['created_at'].replace('Z', '+00:00'))
+                if earliest_comment_time is None or review_time < earliest_comment_time:
+                    earliest_comment_time = review_time
+
+        # Check review comments
+        for comment in review_comments:
+            if (comment.get('user') and
+                not self.is_bot_user(comment['user']) and
+                comment['user']['login'] != pr_author and
+                comment.get('created_at')):
+
+                comment_time = datetime.fromisoformat(comment['created_at'].replace('Z', '+00:00'))
+                if earliest_comment_time is None or comment_time < earliest_comment_time:
+                    earliest_comment_time = comment_time
+
+        # Check issue comments
+        for comment in issue_comments:
+            if (comment.get('user') and
+                not self.is_bot_user(comment['user']) and
+                comment['user']['login'] != pr_author and
+                comment.get('created_at')):
+
+                comment_time = datetime.fromisoformat(comment['created_at'].replace('Z', '+00:00'))
+                if earliest_comment_time is None or comment_time < earliest_comment_time:
+                    earliest_comment_time = comment_time
+
+        if earliest_comment_time is None:
+            return None  # No qualifying comments found
+
+        # Calculate time difference in hours
+        time_diff = (earliest_comment_time - pr_created_at).total_seconds() / 3600
+        return round(time_diff, 2)
+
+    def get_time_from_first_comment_to_followup_commit(self, pr: Dict) -> Optional[float]:
+        """Calculate time from first comment to follow-up commit by PR author in hours"""
+        pr_number = pr['number']
+        pr_author = pr['user']['login']
+
+        # First, get the time of the first comment
+        first_comment_time = None
+
+        # Get all types of comments/reviews to find the earliest
+        reviews = self.get_pr_reviews(pr_number)
+        review_comments = self.get_pr_review_comments(pr_number)
+        issue_comments = self.get_pr_comments(pr_number)
+
+        # Find earliest comment time (same logic as get_time_to_first_comment)
+        for review in reviews:
+            if (review.get('user') and
+                not self.is_bot_user(review['user']) and
+                review['user']['login'] != pr_author and
+                review.get('created_at')):
+
+                review_time = datetime.fromisoformat(review['created_at'].replace('Z', '+00:00'))
+                if first_comment_time is None or review_time < first_comment_time:
+                    first_comment_time = review_time
+
+        for comment in review_comments:
+            if (comment.get('user') and
+                not self.is_bot_user(comment['user']) and
+                comment['user']['login'] != pr_author and
+                comment.get('created_at')):
+
+                comment_time = datetime.fromisoformat(comment['created_at'].replace('Z', '+00:00'))
+                if first_comment_time is None or comment_time < first_comment_time:
+                    first_comment_time = comment_time
+
+        for comment in issue_comments:
+            if (comment.get('user') and
+                not self.is_bot_user(comment['user']) and
+                comment['user']['login'] != pr_author and
+                comment.get('created_at')):
+
+                comment_time = datetime.fromisoformat(comment['created_at'].replace('Z', '+00:00'))
+                if first_comment_time is None or comment_time < first_comment_time:
+                    first_comment_time = comment_time
+
+        if first_comment_time is None:
+            return None  # No qualifying first comment found
+
+        # Now find the first commit by PR author after the first comment
+        commits = self.get_pr_commits(pr_number)
+        earliest_followup_commit = None
+
+        for commit in commits:
+            # Use GitHub user login if available, otherwise fall back to commit author name
+            commit_author_login = None
+            if commit.get('author') and not self.is_bot_user(commit['author']):
+                commit_author_login = commit['author']['login']
+
+            commit_date_str = commit.get('commit', {}).get('committer', {}).get('date', '')
+
+            if not commit_date_str:
+                continue
+
+            commit_date = datetime.fromisoformat(commit_date_str.replace('Z', '+00:00'))
+
+            # Check if this commit is by the PR author and after the first comment
+            if (commit_author_login == pr_author and commit_date > first_comment_time):
+                if earliest_followup_commit is None or commit_date < earliest_followup_commit:
+                    earliest_followup_commit = commit_date
+
+        if earliest_followup_commit is None:
+            return None  # No follow-up commit found
+
+        # Calculate time difference in hours
+        time_diff = (earliest_followup_commit - first_comment_time).total_seconds() / 3600
+        return round(time_diff, 2)
+
+    def get_unique_contributors_for_prs(self, prs: List[Dict]) -> int:
+        """Count unique human contributors across all PRs in the list"""
+        unique_contributors = set()
+
+        for pr in prs:
+            pr_number = pr['number']
+
+            # Add PR author
+            if pr.get('user') and not self.is_bot_user(pr['user']):
+                unique_contributors.add(pr['user']['login'])
+
+            # Add commit authors
+            commits = self.get_pr_commits(pr_number)
+            for commit in commits:
+                commit_author = commit.get('commit', {}).get('author', {})
+                if commit_author and commit_author.get('name'):
+                    # Note: commit author might not have a GitHub user, so we use name
+                    # We'll also check if there's a GitHub user associated
+                    if commit.get('author') and not self.is_bot_user(commit['author']):
+                        unique_contributors.add(commit['author']['login'])
+                    elif commit_author.get('name') and not commit_author['name'].endswith('[bot]'):
+                        # For commits without GitHub user, use name but filter obvious bots
+                        unique_contributors.add(commit_author['name'])
+
+            # Add reviewers
+            reviews = self.get_pr_reviews(pr_number)
+            for review in reviews:
+                if review.get('user') and not self.is_bot_user(review['user']):
+                    unique_contributors.add(review['user']['login'])
+
+            # Add review commenters
+            review_comments = self.get_pr_review_comments(pr_number)
+            for comment in review_comments:
+                if comment.get('user') and not self.is_bot_user(comment['user']):
+                    unique_contributors.add(comment['user']['login'])
+
+            # Add issue commenters
+            issue_comments = self.get_pr_comments(pr_number)
+            for comment in issue_comments:
+                if comment.get('user') and not self.is_bot_user(comment['user']):
+                    unique_contributors.add(comment['user']['login'])
+
+        return len(unique_contributors)
     
     def calculate_metrics(self, weeks_back: int) -> Dict[str, Any]:
         """Calculate all metrics for the specified time period"""
@@ -330,32 +524,58 @@ class GitHubMetricsCalculator:
         total_time_to_merge = 0
         merge_count = 0
 
+        # New metrics tracking
+        time_to_first_comment_values = []
+        time_from_first_comment_to_followup_values = []
+
         print(f"Processing {total_prs} pull requests for {period_name} period...")
 
         for pr in prs:
             pr_number = pr['number']
 
-            # Get all comments for this PR
+            # Get all comments for this PR (existing logic)
             comments = self.get_pr_comments(pr_number)
             review_comments = self.get_pr_review_comments(pr_number)
             total_comments += len(comments) + len(review_comments)
 
-            # Check if PR was merged
+            # Check if PR was merged (existing logic)
             if pr['merged_at'] is not None:
                 merged_prs += 1
 
-                # Calculate time to merge
+                # Calculate time to merge (existing logic)
                 created_at = datetime.fromisoformat(pr['created_at'].replace('Z', '+00:00'))
                 merged_at = datetime.fromisoformat(pr['merged_at'].replace('Z', '+00:00'))
                 time_to_merge = (merged_at - created_at).total_seconds() / 3600  # Hours
                 total_time_to_merge += time_to_merge
                 merge_count += 1
 
-        # Calculate averages
+            # New metrics calculation
+            time_to_first_comment = self.get_time_to_first_comment(pr)
+            if time_to_first_comment is not None:
+                time_to_first_comment_values.append(time_to_first_comment)
+
+            time_from_first_comment_to_followup = self.get_time_from_first_comment_to_followup_commit(pr)
+            if time_from_first_comment_to_followup is not None:
+                time_from_first_comment_to_followup_values.append(time_from_first_comment_to_followup)
+
+        # Calculate existing averages
         prs_per_week = total_prs / weeks_back
         merged_prs_per_week = merged_prs / weeks_back
         avg_comments_per_pr = total_comments / total_prs if total_prs > 0 else 0
         avg_time_to_merge = total_time_to_merge / merge_count if merge_count > 0 else 0
+
+        # Calculate new metric averages
+        avg_time_to_first_comment = (
+            sum(time_to_first_comment_values) / len(time_to_first_comment_values)
+            if time_to_first_comment_values else 0
+        )
+        avg_time_from_first_comment_to_followup = (
+            sum(time_from_first_comment_to_followup_values) / len(time_from_first_comment_to_followup_values)
+            if time_from_first_comment_to_followup_values else 0
+        )
+
+        # Calculate unique contributors
+        unique_contributors_count = self.get_unique_contributors_for_prs(prs)
 
         return {
             'total_prs': total_prs,
@@ -367,7 +587,11 @@ class GitHubMetricsCalculator:
             'prs_merged_per_week': round(merged_prs_per_week, 2),
             'average_comments_per_pr': round(avg_comments_per_pr, 2),
             'average_time_to_merge_hours': round(avg_time_to_merge, 2),
-            'average_time_to_merge_days': round(avg_time_to_merge / 24, 2)
+            'average_time_to_merge_days': round(avg_time_to_merge / 24, 2),
+            # New metrics
+            'average_time_to_first_comment_hours': round(avg_time_to_first_comment, 2),
+            'average_time_from_first_comment_to_followup_commit_hours': round(avg_time_from_first_comment_to_followup, 2),
+            'unique_contributors_count': unique_contributors_count
         }
 
     def calculate_comparative_metrics(self, weeks_back: int) -> Dict[str, Any]:
@@ -448,6 +672,9 @@ def main():
                 print(f"Pull Requests Merged per Week: {metrics.get('beforeAuto_prs_merged_per_week', 0)}")
                 print(f"Average Comments per PR: {metrics.get('beforeAuto_average_comments_per_pr', 0)}")
                 print(f"Average Time to Merge: {metrics.get('beforeAuto_average_time_to_merge_hours', 0)} hours ({metrics.get('beforeAuto_average_time_to_merge_days', 0)} days)")
+                print(f"Average Time to First Comment: {metrics.get('beforeAuto_average_time_to_first_comment_hours', 0)} hours")
+                print(f"Average Time from First Comment to Follow-up Commit: {metrics.get('beforeAuto_average_time_from_first_comment_to_followup_commit_hours', 0)} hours")
+                print(f"Unique Contributors: {metrics.get('beforeAuto_unique_contributors_count', 0)}")
             else:
                 print("No data available for before automation period")
 
@@ -462,6 +689,9 @@ def main():
                 print(f"Pull Requests Merged per Week: {metrics.get('afterAuto_prs_merged_per_week', 0)}")
                 print(f"Average Comments per PR: {metrics.get('afterAuto_average_comments_per_pr', 0)}")
                 print(f"Average Time to Merge: {metrics.get('afterAuto_average_time_to_merge_hours', 0)} hours ({metrics.get('afterAuto_average_time_to_merge_days', 0)} days)")
+                print(f"Average Time to First Comment: {metrics.get('afterAuto_average_time_to_first_comment_hours', 0)} hours")
+                print(f"Average Time from First Comment to Follow-up Commit: {metrics.get('afterAuto_average_time_from_first_comment_to_followup_commit_hours', 0)} hours")
+                print(f"Unique Contributors: {metrics.get('afterAuto_unique_contributors_count', 0)}")
             else:
                 print("No data available for after automation period")
 
@@ -474,6 +704,12 @@ def main():
             after_merge_time = metrics.get('afterAuto_average_time_to_merge_hours', 0)
             before_comments = metrics.get('beforeAuto_average_comments_per_pr', 0)
             after_comments = metrics.get('afterAuto_average_comments_per_pr', 0)
+            before_time_to_first_comment = metrics.get('beforeAuto_average_time_to_first_comment_hours', 0)
+            after_time_to_first_comment = metrics.get('afterAuto_average_time_to_first_comment_hours', 0)
+            before_time_to_followup = metrics.get('beforeAuto_average_time_from_first_comment_to_followup_commit_hours', 0)
+            after_time_to_followup = metrics.get('afterAuto_average_time_from_first_comment_to_followup_commit_hours', 0)
+            before_contributors = metrics.get('beforeAuto_unique_contributors_count', 0)
+            after_contributors = metrics.get('afterAuto_unique_contributors_count', 0)
 
             if before_prs_per_week > 0:
                 prs_change = ((after_prs_per_week - before_prs_per_week) / before_prs_per_week) * 100
@@ -486,6 +722,18 @@ def main():
             if before_comments > 0:
                 comments_change = ((after_comments - before_comments) / before_comments) * 100
                 print(f"Average Comments per PR Change: {comments_change:+.1f}%")
+
+            if before_time_to_first_comment > 0:
+                first_comment_change = ((after_time_to_first_comment - before_time_to_first_comment) / before_time_to_first_comment) * 100
+                print(f"Average Time to First Comment Change: {first_comment_change:+.1f}%")
+
+            if before_time_to_followup > 0:
+                followup_change = ((after_time_to_followup - before_time_to_followup) / before_time_to_followup) * 100
+                print(f"Average Time from First Comment to Follow-up Commit Change: {followup_change:+.1f}%")
+
+            if before_contributors > 0:
+                contributors_change = ((after_contributors - before_contributors) / before_contributors) * 100
+                print(f"Unique Contributors Change: {contributors_change:+.1f}%")
 
             print("="*70)
 

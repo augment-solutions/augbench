@@ -10,6 +10,9 @@ For each period (beforeAuto, afterAuto):
 - PRs/MRs created per week and merged per week
 - Average comments per PR/MR
 - Average time to merge (hours and days)
+- Average time to first comment (hours) - GitHub only
+- Average time from first comment to follow-up commit (hours) - GitHub only
+- Number of unique contributors including reviewers and developers - GitHub only
 - Side-by-side comparison with % change
 
 ## Prerequisites
@@ -47,6 +50,12 @@ Example values:
 {
   "beforeAuto_prs_created_per_week": 4.0,
   "afterAuto_prs_created_per_week": 6.0,
+  "beforeAuto_average_time_to_first_comment_hours": 12.5,
+  "afterAuto_average_time_to_first_comment_hours": 8.2,
+  "beforeAuto_average_time_from_first_comment_to_followup_commit_hours": 24.0,
+  "afterAuto_average_time_from_first_comment_to_followup_commit_hours": 18.5,
+  "beforeAuto_unique_contributors_count": 15,
+  "afterAuto_unique_contributors_count": 22,
   "automation_date": "2024-06-15T00:00:00Z"
 }
 ````
@@ -59,9 +68,30 @@ Example values:
 - AUTOMATED_DATE: 'YYYY-MM-DDTHH:MM:SSZ'
 - BRANCH: '' (all) or branch name (e.g., 'main')
 
+### 5) New GitHub-specific metrics (added in latest version)
+The GitHub script now includes three additional metrics for deeper ROI analysis:
+
+**Average Time to First Comment (hours)**
+- Measures elapsed time from PR creation to first reviewer feedback
+- Includes reviews, review comments, and issue-style PR comments
+- Excludes comments by PR author and bot accounts
+- PRs with no qualifying comments are excluded from the average
+
+**Average Time from First Comment to Follow-up Commit (hours)**
+- Measures elapsed time from first reviewer comment to next commit by PR author
+- Only counts commits authored by the PR author after the first comment
+- PRs with no follow-up commits are excluded from the average
+
+**Unique Contributors Count**
+- Counts unique human participants across all PRs in the period
+- Includes PR authors, commit authors, reviewers, and commenters
+- Excludes bot accounts (login ending with "[bot]" or type "Bot")
+- Provides insight into team engagement and collaboration
+
 Notes
 - Branch filter is optional; empty analyzes all branches.
 - Script handles rate limits and transient network issues gracefully.
+- New metrics use UTC timestamps and round to 2 decimal places.
 
 ---
 
