@@ -1,27 +1,37 @@
-# ROI Scripts: Quick PR/MR ROI Metrics (GitHub + GitLab)
+# ROI Scripts: Quick PR/MR ROI Metrics (GitHub + GitLab + Bitbucket)
 
 Customer-focused tools to quickly quantify ROI from engineering automation. Each script compares “before automation” vs “after automation” over equal time windows and outputs a clear console report plus a JSON file you can share.
 
-- GitHub: github_pr_metrics.py
-- GitLab: gitlab_mr_metrics.py
+- **GitHub**: `github_pr_metrics.py`
+- **GitLab**: `gitlab_mr_metrics.py`
+- **Bitbucket**: `bitbucket_pr_metrics.py`
 
-## What they measure (both scripts)
+## What they measure (all scripts)
 For each period (beforeAuto, afterAuto):
-- PRs/MRs created per week and merged per week
-- Average comments per PR/MR
-- Average time to merge (hours and days)
-- Average time to first comment (hours) - GitHub only
-- Average time from first comment to follow-up commit (hours) - GitHub only
-- Number of unique contributors including reviewers and developers - GitHub only
-- **Manual metrics (GitHub only):**
-  - Average time for first review (hours) - user-provided
-  - Average time for remediation after rejection (hours) - user-provided
-- Side-by-side comparison with % change
+- **Volume Metrics:**
+  - PRs/MRs created per week and merged per week
+  - Total PRs/MRs created and merged
+- **Collaboration Metrics:**
+  - Average comments per PR/MR
+  - Number of unique contributors (authors, reviewers, commenters)
+- **Efficiency Metrics:**
+  - Average time to merge (hours and days)
+  - Average time to first comment (hours)
+  - Average time from first comment to follow-up commit (hours)
+- **Manual Metrics (user-provided):**
+  - Average time for first review (hours)
+  - Average time for remediation after rejection (hours)
+- **Analysis:**
+  - Side-by-side comparison with % change
+  - Real-time progress reporting during data collection
 
 ## Prerequisites
 - Python 3.8+
-- pip install requests
+- `pip install requests`
 - Access token with read permissions to your repo/project
+- **GitHub**: Personal Access Token with `repo` scope
+- **GitLab**: Personal Access Token with `api` or `read_api` scope
+- **Bitbucket**: App Password with `Repositories: Read` permission
 
 Tip: You can run end-to-end in 2–3 minutes. Just set your token, project/repo, and automation date.
 
@@ -168,27 +178,94 @@ Notes
 ---
 
 ## GitLab: gitlab_mr_metrics.py
-### 1) Quick setup
-Edit the config block at the top of the file:
-- GITLAB_TOKEN: GitLab token (scope: api or read_api)
+### 1) Configuration Options
+
+**Option A: Edit the config block at the top of the file:**
+- GITLAB_TOKEN: GitLab Personal Access Token (scope: api or read_api)
 - PROJECT_ID: Numeric ID or URL-encoded path (e.g., group%2Fproject)
 - WEEKS_BACK: Weeks in each comparison window (default 2)
-- AUTOMATED_DATE: ISO 8601 (e.g., 2024-06-15T00:00:00Z). Empty = now
-- BRANCH: Target branch filter ('' = all)
-- GITLAB_BASE_URL_CONFIG: For self-managed (e.g., https://gitlab.company.com). Empty = https://gitlab.com
-- Optional SSL envs for self-managed:
-  - GITLAB_VERIFY_SSL=0 to skip verification (dev/test only)
-  - GITLAB_CA_BUNDLE=/path/to/ca.pem
+- AUTOMATED_DATE: When automation went live, ISO 8601 (e.g., 2024-06-15T00:00:00Z). Empty = now
+- BRANCH: Target branch filter ('' = all branches)
+- GITLAB_BASE_URL: For self-managed GitLab (e.g., https://gitlab.company.com). Default = https://gitlab.com
 
-Example values:
-- PROJECT_ID='group%2Fapp'
-- AUTOMATED_DATE='2024-06-15T00:00:00Z'
-- BRANCH='main'
-- GITLAB_BASE_URL_CONFIG='https://gitlab.company.com'
+**Option B: Use environment variables:**
+```bash
+export GITLAB_TOKEN="your_token_here"
+export PROJECT_ID="mygroup/myproject"  # or numeric ID
+export WEEKS_BACK=4
+export AUTOMATED_DATE="2024-06-15T00:00:00Z"
+export BRANCH="main"
+export GITLAB_BASE_URL="https://gitlab.company.com"  # for self-managed
+```
 
-### 2) Run
-- pip install requests
-- python gitlab_mr_metrics.py
+**Option C: Interactive prompts (automatic when config is missing):**
+The script will automatically prompt for missing required values with secure token input.
+
+### 2) SSL Configuration (Self-managed GitLab)
+For self-managed GitLab instances with custom certificates:
+```bash
+export GITLAB_VERIFY_SSL="false"  # Disable SSL verification (dev/test only)
+export GITLAB_CA_BUNDLE="/path/to/ca-bundle.pem"  # Custom CA bundle
+```
+
+### 3) Run
+```bash
+python3 gitlab_mr_metrics.py
+```
+
+### 4) Features
+- **Real-time progress reporting** during MR fetching and processing
+- **Manual metrics prompting** at startup for review and remediation times
+- **Configuration validation** with interactive prompts for missing values
+- **Environment variable support** for all configuration options
+- **Enhanced metrics** including time to first comment and unique contributors
+- **Bot filtering** excludes system notes and bot accounts
+- **SSL flexibility** for self-managed instances
+
+---
+
+## Bitbucket: bitbucket_pr_metrics.py
+### 1) Configuration Options
+
+**Option A: Edit the config block at the top of the file:**
+- BITBUCKET_USERNAME: Your Bitbucket username
+- BITBUCKET_APP_PASSWORD: App Password (not your account password)
+- REPO_NAME: workspace/repo-name (e.g., myteam/myrepo)
+- WEEKS_BACK: Weeks in each comparison window (default 2)
+- AUTOMATED_DATE: When automation went live, ISO 8601 (e.g., 2024-06-15T00:00:00Z). Empty = now
+- BRANCH: Base branch to analyze ('' = all branches)
+
+**Option B: Use environment variables:**
+```bash
+export BITBUCKET_USERNAME="your_username"
+export BITBUCKET_APP_PASSWORD="your_app_password"
+export REPO_NAME="myteam/myrepo"
+export WEEKS_BACK=4
+export AUTOMATED_DATE="2024-06-15T00:00:00Z"
+export BRANCH="main"
+```
+
+**Option C: Interactive prompts (automatic when config is missing):**
+The script will automatically prompt for missing required values with secure password input.
+
+### 2) Bitbucket App Password Setup
+1. Go to Bitbucket Settings → App passwords
+2. Create new app password with **Repositories: Read** permission
+3. Use this app password (not your account password) in the script
+
+### 3) Run
+```bash
+python3 bitbucket_pr_metrics.py
+```
+
+### 4) Features
+- **Real-time progress reporting** during PR fetching and processing
+- **Manual metrics prompting** at startup for review and remediation times
+- **Configuration validation** with interactive prompts for missing values
+- **Environment variable support** for all configuration options
+- **Enhanced metrics** including time to first comment and unique contributors
+- **Bot filtering** excludes system comments and bot accounts
+- **Basic authentication** using username and app password
 
 ### 3) Expected output
 - Console summary for both periods and % deltas
@@ -256,3 +333,24 @@ The GitHub script now shows detailed progress during execution:
 - 403/401: Check token scopes and access
 - Empty results: Confirm date ranges, branch filter, and activity during the window
 - Rate limit: Scripts will wait/retry automatically
+
+## Key Features Summary
+
+All three scripts now provide:
+- ✅ **Identical metrics** across GitHub, GitLab, and Bitbucket
+- ✅ **Real-time progress reporting** during data collection
+- ✅ **Manual metrics prompting** for review and remediation times
+- ✅ **Configuration validation** with interactive prompts
+- ✅ **Environment variable support** for all configuration options
+- ✅ **Enhanced metrics** including time to first comment and unique contributors
+- ✅ **Bot filtering** to exclude automated accounts
+- ✅ **Consistent output format** for easy comparison across platforms
+
+## Output Files
+
+Each script generates:
+- **Console Report**: Immediate stakeholder-friendly summary with progress tracking
+- **JSON File**: Machine-readable format for further analysis
+  - GitHub: `github_pr_metrics_comparative_{owner_repo}_{timestamp}.json`
+  - GitLab: `gitlab_mr_metrics_comparative_{project}_{timestamp}.json`
+  - Bitbucket: `bitbucket_pr_metrics_comparative_{workspace_repo}_{timestamp}.json`

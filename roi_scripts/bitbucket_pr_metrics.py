@@ -1,28 +1,35 @@
 #!/usr/bin/env python3
 """
-GitLab MR Metrics Calculator - Comparative Analysis
+Bitbucket PR Metrics Calculator - Comparative Analysis
 
-This script calculates metrics for GitLab Merge Requests (MRs) similar to
-roi_scripts/github_pr_metrics.py for GitHub. It computes metrics for two periods:
-- "beforeAuto": Period ending one week before AUTOMATED_DATE, spanning WEEKS_BACK weeks
-- "afterAuto": Period starting at AUTOMATED_DATE, spanning WEEKS_BACK weeks
+This script calculates various metrics for Bitbucket pull requests with comparative analysis
+before and after automation was added. It generates metrics for two time periods:
+- "beforeAuto": Period ending one week before AUTOMATED_DATE, spanning WEEKS_BACK duration
+- "afterAuto": Period starting from AUTOMATED_DATE, spanning WEEKS_BACK duration
 
-Metrics per period:
-1. Total MRs created
-2. Total MRs merged
-3. Average MRs created per week
-4. Average MRs merged per week
-5. Average comments per MR (notes + diff discussions)
-6. Average time to merge (hours and days)
+Metrics calculated for each period:
+1. Average number of Pull Requests created per week
+2. Average number of Pull Requests merged per week
+3. Average number of comments across all Pull Requests in the time period
+4. Average time to merge (difference between PR merged and PR created timestamps)
+5. Average time to first comment
+6. Average time from first comment to follow-up commit
+7. Unique contributors count
 
 Usage:
-1. Replace YOUR_GITLAB_TOKEN with your GitLab token (scope: api or read_api)
-2. Set PROJECT_ID to the numeric ID or URL-encoded path (e.g., namespace%2Fproject)
-3. Optionally set BRANCH to filter by target branch ('' = all branches)
-4. Set AUTOMATED_DATE to 'YYYY-MM-DDTHH:MM:SSZ' or '' to use current time
-5. Run: python gitlab_mr_metrics.py
+1. Replace YOUR_BITBUCKET_USERNAME and YOUR_BITBUCKET_APP_PASSWORD with your credentials
+2. Replace workspace/repo-name with your target repository
+3. Adjust WEEKS_BACK as needed (default: 2) - this applies to both before and after periods
+4. Set AUTOMATED_DATE to specify when automation was added (format: 'YYYY-MM-DDTHH:MM:SSZ')
+   - Leave empty or set to '' to use current time as automation date
+5. Optionally set BRANCH to specify which Git branch to analyze
+   - Leave empty or set to '' to analyze PRs for ALL branches
+   - Set to specific branch name (e.g., 'main', 'develop') to analyze only that branch
+6. Run: python bitbucket_pr_metrics.py
 
-SaaS base URL is https://gitlab.com by default. For self-managed, change GITLAB_BASE_URL.
+Output will contain metrics with prefixes:
+- "beforeAuto" for metrics from the period before automation
+- "afterAuto" for metrics from the period after automation
 """
 
 import requests
@@ -34,39 +41,21 @@ from datetime import datetime, timedelta
 import time
 from typing import Dict, List, Any, Optional, Tuple
 from urllib.parse import urlparse
+import base64
 
-import urllib3
-
-# -------------------- Configuration --------------------
 # Configuration - Replace these values or set via environment variables
-GITLAB_TOKEN = os.environ.get('GITLAB_TOKEN', '')
-# Either numeric ID (e.g., 123456) or URL-encoded full path (e.g., 'group%2Fproject')
-PROJECT_ID = os.environ.get('PROJECT_ID', '')
-WEEKS_BACK = int(os.environ.get('WEEKS_BACK', '2'))
-AUTOMATED_DATE = os.environ.get('AUTOMATED_DATE', '')  # 'YYYY-MM-DDTHH:MM:SSZ' or '' to use now
-BRANCH = os.environ.get('BRANCH', '')  # Target branch filter; '' = all branches
+BITBUCKET_USERNAME = os.environ.get('BITBUCKET_USERNAME', '')
+BITBUCKET_APP_PASSWORD = os.environ.get('BITBUCKET_APP_PASSWORD', '')
+REPO_NAME = os.environ.get('REPO_NAME', '')  # Format: 'workspace/repo-name'
+WEEKS_BACK = int(os.environ.get('WEEKS_BACK', '2'))  # Number of weeks to look back
+AUTOMATED_DATE = os.environ.get('AUTOMATED_DATE', '')  # Format: 'YYYY-MM-DDTHH:MM:SSZ' or leave empty to use current time
+BRANCH = os.environ.get('BRANCH', '')  # Base branch for PRs (leave empty to analyze ALL branches, or specify branch name)
 
-# GitLab API configuration
-# You can set GITLAB_BASE_URL here. If left blank, the script will try the environment
-# variable GITLAB_BASE_URL, and if that is also blank, it will default to SaaS (https://gitlab.com).
-GITLAB_BASE_URL_CONFIG = 'https://localhost:4040'  # e.g., 'https://gitlab.yourcompany.com' or '' for SaaS fallback
-GITLAB_BASE_URL = (
-    GITLAB_BASE_URL_CONFIG.strip()
-    or os.environ.get('GITLAB_BASE_URL', '').strip()
-    or 'https://gitlab.com'
-)
-API_BASE_URL = f"{GITLAB_BASE_URL.rstrip('/')}/api/v4"
-DEFAULT_PER_PAGE = 100
-
-# SSL verification configuration (for self-signed/local GitLab instances)
-# - GITLAB_VERIFY_SSL: set to '0'/'false' to disable verification
-# - GITLAB_CA_BUNDLE: path to a custom CA bundle file
-GITLAB_VERIFY_SSL_ENV = os.environ.get('GITLAB_VERIFY_SSL', 'true').strip().lower()
-GITLAB_VERIFY_SSL = GITLAB_VERIFY_SSL_ENV in ('1', 'true', 'yes', 'y')
-GITLAB_CA_BUNDLE = os.environ.get('GITLAB_CA_BUNDLE', '').strip()
+# Bitbucket API configuration
+API_BASE_URL = os.environ.get('API_BASE_URL', 'https://api.bitbucket.org/2.0')
 
 # Progress reporting configuration
-PROGRESS_INTERVAL = 10  # Show progress every N MRs processed
+PROGRESS_INTERVAL = 10  # Show progress every N PRs processed
 
 def prompt_for_manual_metrics() -> Dict[str, float]:
     """
@@ -77,13 +66,13 @@ def prompt_for_manual_metrics() -> Dict[str, float]:
     print("="*70)
     print("Please provide the following metrics based on your team's experience:")
     print()
-
+    
     metrics = {}
-
+    
     # Average time for first review
     while True:
         try:
-            first_review_input = input("What is the average time taken in hours by a developer for doing a first review of a MR? ").strip()
+            first_review_input = input("What is the average time taken in hours by a developer for doing a first review of a PR? ").strip()
             if first_review_input:
                 first_review_hours = float(first_review_input)
                 if first_review_hours >= 0:
@@ -95,11 +84,11 @@ def prompt_for_manual_metrics() -> Dict[str, float]:
                 print("ERROR: This field is required. Please enter a value.")
         except ValueError:
             print("ERROR: Please enter a valid number (e.g., 2.5 for 2.5 hours).")
-
+    
     # Average time for remediation
     while True:
         try:
-            remediation_input = input("What is the average time taken in hours by a developer to remediate the findings from the code review when a MR is rejected? ").strip()
+            remediation_input = input("What is the average time taken in hours by a developer to remediate the findings from the code review when a PR is rejected? ").strip()
             if remediation_input:
                 remediation_hours = float(remediation_input)
                 if remediation_hours >= 0:
@@ -111,13 +100,13 @@ def prompt_for_manual_metrics() -> Dict[str, float]:
                 print("ERROR: This field is required. Please enter a value.")
         except ValueError:
             print("ERROR: Please enter a valid number (e.g., 4.0 for 4 hours).")
-
+    
     print("\n" + "="*70)
     print("Manual Metrics Summary:")
     print(f"Average first review time: {metrics['average_first_review_time_hours']} hours")
     print(f"Average remediation time: {metrics['average_remediation_time_hours']} hours")
     print("="*70)
-
+    
     return metrics
 
 def validate_config() -> Tuple[bool, List[str], Dict[str, Any]]:
@@ -126,21 +115,27 @@ def validate_config() -> Tuple[bool, List[str], Dict[str, Any]]:
     """
     errors = []
     config = {
-        'gitlab_token': GITLAB_TOKEN,
-        'project_id': PROJECT_ID,
+        'bitbucket_username': BITBUCKET_USERNAME,
+        'bitbucket_app_password': BITBUCKET_APP_PASSWORD,
+        'repo_name': REPO_NAME,
         'weeks_back': WEEKS_BACK,
         'automated_date': AUTOMATED_DATE,
         'branch': BRANCH,
-        'gitlab_base_url': GITLAB_BASE_URL
+        'api_base_url': API_BASE_URL
     }
 
-    # Validate GitLab token
-    if not config['gitlab_token'] or config['gitlab_token'] in ['YOUR_GITLAB_TOKEN', '']:
-        errors.append("GitLab token is required")
+    # Validate Bitbucket credentials
+    if not config['bitbucket_username'] or config['bitbucket_username'] in ['YOUR_BITBUCKET_USERNAME', '']:
+        errors.append("Bitbucket username is required")
+    
+    if not config['bitbucket_app_password'] or config['bitbucket_app_password'] in ['YOUR_BITBUCKET_APP_PASSWORD', '']:
+        errors.append("Bitbucket app password is required")
 
-    # Validate project ID
-    if not config['project_id'] or config['project_id'] in ['project-id', '']:
-        errors.append("Project ID is required")
+    # Validate repository name format
+    if not config['repo_name'] or config['repo_name'] in ['workspace/repo-name', '']:
+        errors.append("Repository name is required in format 'workspace/repo-name'")
+    elif '/' not in config['repo_name']:
+        errors.append("Repository name must be in format 'workspace/repo-name'")
 
     # Validate weeks back
     try:
@@ -160,13 +155,13 @@ def validate_config() -> Tuple[bool, List[str], Dict[str, Any]]:
             except ValueError:
                 errors.append("Automated date must be in ISO 8601 format: 'YYYY-MM-DDTHH:MM:SSZ'")
 
-    # Validate GitLab base URL
-    if not config['gitlab_base_url']:
-        errors.append("GitLab base URL is required")
+    # Validate API base URL
+    if not config['api_base_url']:
+        errors.append("API base URL is required")
     else:
-        parsed = urlparse(config['gitlab_base_url'])
+        parsed = urlparse(config['api_base_url'])
         if parsed.scheme != 'https':
-            errors.append("GitLab base URL must use HTTPS")
+            errors.append("API base URL must use HTTPS")
 
     return len(errors) == 0, errors, config
 
@@ -177,20 +172,27 @@ def prompt_for_config() -> Optional[Dict[str, Any]]:
     print("\n" + "="*70)
     print("INTERACTIVE CONFIGURATION")
     print("="*70)
-
-    # GitLab token (secure input)
-    gitlab_token = getpass.getpass("GitLab Personal Access Token: ").strip()
-    while not gitlab_token:
-        print("ERROR: GitLab token is required.")
-        gitlab_token = getpass.getpass("GitLab Personal Access Token: ").strip()
-
-    # Project ID
+    
+    # Bitbucket username
     while True:
-        project_id = input("Project ID (numeric ID or namespace/project): ").strip()
-        if project_id:
+        username = input("Bitbucket Username: ").strip()
+        if username:
             break
-        print("ERROR: Project ID is required.")
-
+        print("ERROR: Bitbucket username is required.")
+    
+    # Bitbucket app password (secure input)
+    app_password = getpass.getpass("Bitbucket App Password: ").strip()
+    while not app_password:
+        print("ERROR: Bitbucket app password is required.")
+        app_password = getpass.getpass("Bitbucket App Password: ").strip()
+    
+    # Repository name
+    while True:
+        repo_name = input("Repository name (workspace/repo-name): ").strip()
+        if repo_name and '/' in repo_name:
+            break
+        print("ERROR: Repository name is required in format 'workspace/repo-name'.")
+    
     # Weeks back
     while True:
         try:
@@ -205,7 +207,7 @@ def prompt_for_config() -> Optional[Dict[str, Any]]:
             break
         except ValueError:
             print("ERROR: Please enter a valid integer.")
-
+    
     # Automated date
     while True:
         automated_date = input("Automation date (YYYY-MM-DDTHH:MM:SSZ, or empty for current time): ").strip()
@@ -219,117 +221,104 @@ def prompt_for_config() -> Optional[Dict[str, Any]]:
             break
         except ValueError:
             print("ERROR: Invalid date format. Use 'YYYY-MM-DDTHH:MM:SSZ'")
-
+    
     # Branch
     branch = input("Target branch (empty for all branches): ").strip()
-
-    # GitLab base URL
-    while True:
-        gitlab_url = input(f"GitLab base URL (default: {GITLAB_BASE_URL}): ").strip()
-        if not gitlab_url:
-            gitlab_url = GITLAB_BASE_URL
-
-        parsed = urlparse(gitlab_url)
-        if parsed.scheme != 'https':
-            print("ERROR: GitLab base URL must use HTTPS.")
-            continue
-        break
-
+    
+    # API base URL
+    api_url = input(f"API base URL (default: {API_BASE_URL}): ").strip()
+    if not api_url:
+        api_url = API_BASE_URL
+    
     # Confirmation
     print("\n" + "="*70)
     print("Configuration Summary:")
-    print(f"Project ID: {project_id}")
+    print(f"Username: {username}")
+    print(f"Repository: {repo_name}")
     print(f"Weeks back: {weeks_back}")
     print(f"Automated date: {automated_date or 'Current time'}")
     print(f"Branch: {branch or 'All branches'}")
-    print(f"GitLab URL: {gitlab_url}")
+    print(f"API URL: {api_url}")
     print("="*70)
-
+    
     confirm = input("Proceed with this configuration? (y/N): ").strip().lower()
     if confirm not in ['y', 'yes']:
         print("Configuration cancelled.")
         return None
-
+    
     return {
-        'gitlab_token': gitlab_token,
-        'project_id': project_id,
+        'bitbucket_username': username,
+        'bitbucket_app_password': app_password,
+        'repo_name': repo_name,
         'weeks_back': weeks_back,
         'automated_date': automated_date,
         'branch': branch,
-        'gitlab_base_url': gitlab_url
+        'api_base_url': api_url
     }
 
-class GitLabMetricsCalculator:
-    def __init__(self, token: str, project_id: str, branch: str = ''):
-        self.token = token
-        self.project_id = project_id
-        self.branch = branch.strip() if branch else ''
+class BitbucketMetricsCalculator:
+    def __init__(self, username: str, app_password: str, repo: str, branch: str = ''):
+        self.username = username
+        self.app_password = app_password
+        self.repo = repo
+        self.branch = branch.strip() if branch else ''  # Empty means all branches
+
+        # Create basic auth header
+        credentials = f"{username}:{app_password}"
+        encoded_credentials = base64.b64encode(credentials.encode()).decode()
+
         self.headers = {
-            'PRIVATE-TOKEN': token,
-            'User-Agent': 'MR-Metrics-Calculator'
+            'Authorization': f'Basic {encoded_credentials}',
+            'Accept': 'application/json',
+            'User-Agent': 'PR-Metrics-Calculator'
         }
         self.session = requests.Session()
         self.session.headers.update(self.headers)
         self.progress_interval = PROGRESS_INTERVAL
-        # Configure SSL verification for the session
-        if GITLAB_CA_BUNDLE:
-            # Use custom CA bundle
-            self.session.verify = GITLAB_CA_BUNDLE
-        else:
-            self.session.verify = GITLAB_VERIFY_SSL
-        # Optionally silence insecure request warnings when verification is disabled
-        if self.session.verify is False:
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     def is_bot_user(self, user: Dict) -> bool:
-        """Check if a user is a bot based on username or other indicators"""
+        """Check if a user is a bot based on username or display name"""
         if not user:
             return True
 
         username = user.get('username', '')
-        name = user.get('name', '')
+        display_name = user.get('display_name', '')
 
-        # Check if username or name indicates a bot
-        bot_indicators = ['[bot]', 'bot', 'gitlab-ci', 'dependabot', 'renovate']
+        # Check if username or display name indicates a bot
+        bot_indicators = ['[bot]', 'bot', 'bitbucket-pipelines', 'dependabot', 'renovate']
         for indicator in bot_indicators:
-            if indicator.lower() in username.lower() or indicator.lower() in name.lower():
+            if indicator.lower() in username.lower() or indicator.lower() in display_name.lower():
                 return True
 
         return False
 
-    # ---------- Helpers ----------
     def _sleep_for_rate_limit(self, response) -> bool:
-        # GitLab responds 429 for rate limit; optionally checks Retry-After
+        """Handle rate limiting with exponential backoff"""
         if response.status_code == 429:
-            retry_after = int(response.headers.get('Retry-After', '3'))
-            wait_time = max(retry_after, 3)
+            retry_after = int(response.headers.get('Retry-After', '60'))
+            wait_time = max(retry_after, 60)
             print(f"Rate limited. Waiting {wait_time}s...")
             time.sleep(wait_time)
             return True
         return False
 
     def _get(self, url: str, params: Dict = None) -> Optional[requests.Response]:
+        """Make GET request with retry logic"""
         params = params or {}
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                resp = self.session.get(url, params=params, timeout=30)
-                if resp.status_code == 200:
-                    return resp
-                if resp.status_code in (401, 403):
-                    print(f"Access forbidden/unauthorized: {resp.status_code}")
-                    return None
-                if resp.status_code in (404,):
-                    print("Not found (check PROJECT_ID or permissions)")
-                    return None
-                if resp.status_code in (429, 500, 502, 503, 504):
-                    if self._sleep_for_rate_limit(resp):
+                response = self.session.get(url, params=params, timeout=30)
+                if response.status_code == 200:
+                    return response
+                elif response.status_code in [500, 502, 503, 504]:
+                    if self._sleep_for_rate_limit(response):
                         continue
                     backoff = 2 ** attempt
-                    print(f"Transient error {resp.status_code}. Retrying in {backoff}s...")
+                    print(f"Transient error {response.status_code}. Retrying in {backoff}s...")
                     time.sleep(backoff)
                     continue
-                print(f"API request failed: {resp.status_code} - {resp.text[:200]}")
+                print(f"API request failed: {response.status_code} - {response.text[:200]}")
                 return None
             except requests.exceptions.RequestException as e:
                 backoff = 2 ** attempt
@@ -338,32 +327,39 @@ class GitLabMetricsCalculator:
         return None
 
     def _get_all_pages(self, url: str, params: Dict = None, show_progress: bool = False, context: str = "") -> List[Dict]:
+        """Get all pages from a paginated API endpoint"""
         params = params.copy() if params else {}
-        params['per_page'] = DEFAULT_PER_PAGE
+        params['pagelen'] = 100  # Bitbucket uses 'pagelen' instead of 'per_page'
         all_items: List[Dict] = []
         page = 1
+
         while True:
             params['page'] = page
             resp = self._get(url, params)
             if not resp:
                 break
-            items = resp.json()
-            if not isinstance(items, list):
+
+            data = resp.json()
+            items = data.get('values', [])
+            if not items:
                 break
+
             all_items.extend(items)
 
             # Show progress if requested
             if show_progress:
                 print(f"  Fetched page {page} ({len(items)} items) ... total so far: {len(all_items)}")
 
-            # Stop when fewer than per_page returned
-            if len(items) < params['per_page']:
+            # Check if there's a next page
+            if 'next' not in data:
                 break
             page += 1
+
         return all_items
 
-    # ---------- Dates ----------
+    # Date calculation methods
     def _parse_iso_or_now(self, iso: str) -> datetime:
+        """Parse ISO date string or return current time"""
         if iso and iso.strip():
             try:
                 return datetime.fromisoformat(iso.replace('Z', '+00:00'))
@@ -371,73 +367,90 @@ class GitLabMetricsCalculator:
                 print(f"Warning: Invalid AUTOMATED_DATE '{iso}', using now.")
         return datetime.now()
 
-    def calculate_date_range(self, weeks_back: int, end_date_override: Optional[datetime] = None) -> Tuple[str, str]:
-        end_dt = end_date_override or self._parse_iso_or_now(AUTOMATED_DATE)
-        start_dt = end_dt - timedelta(weeks=weeks_back)
-        start_str = start_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-        end_str = end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-        return start_str, end_str
-
     def calculate_before_auto_date_range(self, weeks_back: int) -> Tuple[str, str]:
+        """Calculate date range for before automation period"""
         auto_dt = self._parse_iso_or_now(AUTOMATED_DATE)
-        end_dt = auto_dt - timedelta(weeks=1)
-        return self.calculate_date_range(weeks_back, end_dt)
+        end_dt = auto_dt - timedelta(weeks=1)  # End 1 week before automation
+        start_dt = end_dt - timedelta(weeks=weeks_back)
+        return (
+            start_dt.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        )
 
     def calculate_after_auto_date_range(self, weeks_back: int) -> Tuple[str, str]:
+        """Calculate date range for after automation period"""
         auto_dt = self._parse_iso_or_now(AUTOMATED_DATE)
         start_dt = auto_dt
         end_dt = auto_dt + timedelta(weeks=weeks_back)
         return (
             start_dt.strftime('%Y-%m-%dT%H:%M:%SZ'),
-            end_dt.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
         )
 
-    # ---------- Data fetch ----------
-    def get_merge_requests(self, start_date: str, end_date: str, period_name: str = "") -> List[Dict]:
-        url = f"{API_BASE_URL}/projects/{self.project_id}/merge_requests"
+    # Data fetching methods
+    def get_pull_requests(self, start_date: str, end_date: str, period_name: str = "") -> List[Dict]:
+        """Get pull requests for the specified date range"""
+        url = f"{API_BASE_URL}/repositories/{self.repo}/pullrequests"
         params = {
-            'state': 'all',
-            # 'scope' is not supported on project-level MR list; remove to avoid empty results
-            'order_by': 'created_at',
-            'sort': 'desc',
-            'created_after': start_date,
-            'created_before': end_date,
+            'state': 'MERGED,DECLINED,OPEN',  # All states
+            'sort': '-created_on',  # Sort by creation date descending
         }
-        if self.branch:
-            params['target_branch'] = self.branch
 
         if period_name:
-            print(f"Fetching MRs for {period_name} period ({start_date} to {end_date})...")
+            print(f"Fetching PRs for {period_name} period ({start_date} to {end_date})...")
 
-        all_mrs = self._get_all_pages(url, params, show_progress=bool(period_name), context=period_name)
+        all_prs = self._get_all_pages(url, params, show_progress=bool(period_name), context=period_name)
+
+        # Filter by date range and branch (Bitbucket API doesn't support date filtering directly)
+        filtered_prs = []
+        start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+
+        for pr in all_prs:
+            created_at = datetime.fromisoformat(pr['created_on'].replace('Z', '+00:00'))
+
+            # Check date range
+            if not (start_dt <= created_at <= end_dt):
+                continue
+
+            # Check branch filter if specified
+            if self.branch:
+                destination_branch = pr.get('destination', {}).get('branch', {}).get('name', '')
+                if destination_branch != self.branch:
+                    continue
+
+            filtered_prs.append(pr)
 
         if period_name:
-            print(f"Found {len(all_mrs)} MRs for {period_name}")
+            print(f"Found {len(filtered_prs)} PRs for {period_name}")
 
-        return all_mrs
+        return filtered_prs
 
-    def get_mr_notes(self, mr_iid: int) -> List[Dict]:
-        url = f"{API_BASE_URL}/projects/{self.project_id}/merge_requests/{mr_iid}/notes"
+    def get_pr_comments(self, pr_id: int) -> List[Dict]:
+        """Get comments for a specific pull request"""
+        url = f"{API_BASE_URL}/repositories/{self.repo}/pullrequests/{pr_id}/comments"
         return self._get_all_pages(url)
 
-    def get_mr_discussions(self, mr_iid: int) -> List[Dict]:
-        url = f"{API_BASE_URL}/projects/{self.project_id}/merge_requests/{mr_iid}/discussions"
+    def get_pr_activity(self, pr_id: int) -> List[Dict]:
+        """Get activity for a specific pull request"""
+        url = f"{API_BASE_URL}/repositories/{self.repo}/pullrequests/{pr_id}/activity"
         return self._get_all_pages(url)
 
-    # ---------- Metrics ----------
     def calculate_metrics_for_period(self, weeks_back: int, start_date: str, end_date: str, period_name: str, manual_metrics: Dict[str, float] = None) -> Dict[str, Any]:
-        print(f"Calculating {period_name} metrics for project {self.project_id}...")
+        """Calculate metrics for a specific time period"""
+        print(f"Calculating {period_name} metrics for {self.repo} over {weeks_back} week(s)...")
         print(f"Date range: {start_date} to {end_date}")
 
-        mrs = self.get_merge_requests(start_date, end_date, period_name)
-        if not mrs:
-            print(f"No merge requests found in {period_name} period.")
+        prs = self.get_pull_requests(start_date, end_date, period_name)
+
+        if not prs:
+            print(f"No pull requests found in the {period_name} time period.")
             return {}
 
-        total_mrs = len(mrs)
-        merged_mrs = 0
+        total_prs = len(prs)
+        merged_prs = 0
         total_comments = 0
-        total_time_to_merge_hours = 0.0
+        total_time_to_merge = 0.0
         merge_count = 0
 
         # Additional metrics tracking
@@ -447,94 +460,77 @@ class GitLabMetricsCalculator:
         followup_count = 0
         unique_contributors = set()
 
-        print(f"Processing {total_mrs} merge requests for {period_name}...")
-        for i, mr in enumerate(mrs, 1):
-            # Progress reporting
-            if i % self.progress_interval == 0 or i == total_mrs:
-                print(f"  Processing MRs: {i}/{total_mrs} (period={period_name})")
+        print(f"Processing {total_prs} pull requests for {period_name}...")
 
-            iid = mr.get('iid')
-            created_at = datetime.fromisoformat(mr['created_at'].replace('Z', '+00:00'))
-            merged_at_str = mr.get('merged_at')
+        for i, pr in enumerate(prs, 1):
+            # Progress reporting
+            if i % self.progress_interval == 0 or i == total_prs:
+                print(f"  Processing PRs: {i}/{total_prs} (period={period_name})")
+
+            pr_id = pr['id']
+            created_at = datetime.fromisoformat(pr['created_on'].replace('Z', '+00:00'))
 
             # Track unique contributors
-            author = mr.get('author', {})
+            author = pr.get('author', {})
             if author and not self.is_bot_user(author):
-                unique_contributors.add(author.get('id'))
+                unique_contributors.add(author.get('uuid'))
 
-            # Comments: general notes + diff discussions notes
-            try:
-                notes = self.get_mr_notes(iid)
-            except Exception:
-                notes = []
-            try:
-                discussions = self.get_mr_discussions(iid)
-            except Exception:
-                discussions = []
+            # Get all comments for this PR
+            comments = self.get_pr_comments(pr_id)
 
-            # Process all comments for timing metrics
-            all_comments = []
-
-            # Add general notes (non-system)
-            for n in notes:
-                if not n.get('system', False) and not self.is_bot_user(n.get('author', {})):
-                    all_comments.append({
-                        'created_at': n.get('created_at'),
-                        'author': n.get('author', {})
+            # Filter out bot comments and system comments
+            user_comments = []
+            for comment in comments:
+                comment_author = comment.get('user', {})
+                if not self.is_bot_user(comment_author):
+                    user_comments.append({
+                        'created_on': comment.get('created_on'),
+                        'author': comment_author
                     })
 
-            # Add discussion notes (non-system)
-            for d in discussions:
-                for n in d.get('notes', []):
-                    if not n.get('system', False) and not self.is_bot_user(n.get('author', {})):
-                        all_comments.append({
-                            'created_at': n.get('created_at'),
-                            'author': n.get('author', {})
-                        })
-
-            total_comments += len(all_comments)
+            total_comments += len(user_comments)
 
             # Calculate time to first comment
-            if all_comments:
+            if user_comments:
                 # Sort comments by creation time
-                all_comments.sort(key=lambda x: x['created_at'])
-                first_comment_time = datetime.fromisoformat(all_comments[0]['created_at'].replace('Z', '+00:00'))
+                user_comments.sort(key=lambda x: x['created_on'])
+                first_comment_time = datetime.fromisoformat(user_comments[0]['created_on'].replace('Z', '+00:00'))
                 time_to_first_comment = (first_comment_time - created_at).total_seconds() / 3600  # Hours
                 total_time_to_first_comment += time_to_first_comment
                 first_comment_count += 1
 
-            # Merge time
-            if merged_at_str:
-                merged_mrs += 1
-                merged_at = datetime.fromisoformat(merged_at_str.replace('Z', '+00:00'))
-                hours = (merged_at - created_at).total_seconds() / 3600.0
-                total_time_to_merge_hours += hours
+            # Check if PR was merged and calculate time to merge
+            if pr['state'] == 'MERGED' and pr.get('updated_on'):
+                merged_prs += 1
+                merged_at = datetime.fromisoformat(pr['updated_on'].replace('Z', '+00:00'))
+                time_to_merge = (merged_at - created_at).total_seconds() / 3600  # Hours
+                total_time_to_merge += time_to_merge
                 merge_count += 1
 
-        print(f"  Completed processing {total_mrs} MRs for {period_name}")
+        print(f"  Completed processing {total_prs} PRs for {period_name}")
 
         # Calculate averages
-        mrs_per_week = total_mrs / weeks_back
-        merged_mrs_per_week = merged_mrs / weeks_back
-        avg_comments_per_mr = total_comments / total_mrs if total_mrs > 0 else 0.0
-        avg_time_to_merge_hours = (total_time_to_merge_hours / merge_count) if merge_count > 0 else 0.0
+        prs_per_week = total_prs / weeks_back
+        merged_prs_per_week = merged_prs / weeks_back
+        avg_comments_per_pr = total_comments / total_prs if total_prs > 0 else 0.0
+        avg_time_to_merge = (total_time_to_merge / merge_count) if merge_count > 0 else 0.0
         avg_time_to_first_comment = (total_time_to_first_comment / first_comment_count) if first_comment_count > 0 else 0.0
         avg_time_from_first_comment_to_followup = (total_time_from_first_comment_to_followup / followup_count) if followup_count > 0 else 0.0
         unique_contributors_count = len(unique_contributors)
 
         # Prepare result dictionary
         result = {
-            'total_mrs': total_mrs,
-            'merged_mrs': merged_mrs,
+            'total_prs': total_prs,
+            'merged_prs': merged_prs,
             'weeks_analyzed': weeks_back,
             'analysis_start_date': start_date,
             'analysis_end_date': end_date,
-            'mrs_created_per_week': round(mrs_per_week, 2),
-            'mrs_merged_per_week': round(merged_mrs_per_week, 2),
-            'average_comments_per_mr': round(avg_comments_per_mr, 2),
-            'average_time_to_merge_hours': round(avg_time_to_merge_hours, 2),
-            'average_time_to_merge_days': round(avg_time_to_merge_hours / 24.0, 2),
-            # New metrics to match GitHub script
+            'prs_created_per_week': round(prs_per_week, 2),
+            'prs_merged_per_week': round(merged_prs_per_week, 2),
+            'average_comments_per_pr': round(avg_comments_per_pr, 2),
+            'average_time_to_merge_hours': round(avg_time_to_merge, 2),
+            'average_time_to_merge_days': round(avg_time_to_merge / 24, 2),
+            # New metrics
             'average_time_to_first_comment_hours': round(avg_time_to_first_comment, 2),
             'average_time_from_first_comment_to_followup_commit_hours': round(avg_time_from_first_comment_to_followup, 2),
             'unique_contributors_count': unique_contributors_count
@@ -547,26 +543,31 @@ class GitLabMetricsCalculator:
         return result
 
     def calculate_comparative_metrics(self, weeks_back: int, manual_metrics: Dict[str, float] = None) -> Dict[str, Any]:
-        print(f"Starting comparative analysis for project {self.project_id}...")
-        branch_info = self.branch if self.branch else 'ALL branches'
+        """Calculate comparative metrics for before and after automation periods"""
+        print(f"Starting comparative analysis for {self.repo}...")
+        branch_info = self.branch if self.branch else "ALL branches"
         print(f"Branch: {branch_info}")
-        print(f"Weeks back per period: {weeks_back}")
+        print(f"Weeks back for each period: {weeks_back}")
 
+        # Calculate date ranges for both periods
         before_start, before_end = self.calculate_before_auto_date_range(weeks_back)
         after_start, after_end = self.calculate_after_auto_date_range(weeks_back)
 
-        print(f"Before automation: {before_start} to {before_end}")
-        print(f"After automation:  {after_start} to {after_end}")
+        print(f"Before automation period: {before_start} to {before_end}")
+        print(f"After automation period: {after_start} to {after_end}")
 
+        # Calculate metrics for both periods
         before_metrics = self.calculate_metrics_for_period(weeks_back, before_start, before_end, 'beforeAuto', manual_metrics)
         after_metrics = self.calculate_metrics_for_period(weeks_back, after_start, after_end, 'afterAuto', manual_metrics)
 
-        combined: Dict[str, Any] = {}
-        for k, v in before_metrics.items():
-            combined[f'beforeAuto_{k}'] = v
-        for k, v in after_metrics.items():
-            combined[f'afterAuto_{k}'] = v
+        # Combine results with prefixes
+        combined = {}
+        for key, value in before_metrics.items():
+            combined[f'beforeAuto_{key}'] = value
+        for key, value in after_metrics.items():
+            combined[f'afterAuto_{key}'] = value
 
+        # Add metadata
         combined['automation_date'] = (
             AUTOMATED_DATE.strip() if AUTOMATED_DATE and AUTOMATED_DATE.strip() else datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
         )
@@ -584,14 +585,14 @@ def _display_period_metrics(metrics: Dict, prefix: str) -> None:
         print(f"No data available for {period_name.lower()} period")
         return
 
-    # Use the same metric display format as GitHub script but adapted for MRs
+    # Use the same metric display format as GitHub script
     metric_data = [
         ('analysis_start_date', 'analysis_end_date', 'Date Range', lambda s, e: f"{s} to {e}"),
-        ('total_mrs', None, 'Total Merge Requests Created', lambda v, _: str(v)),
-        ('merged_mrs', None, 'Total Merge Requests Merged', lambda v, _: str(v)),
-        ('mrs_created_per_week', None, 'Merge Requests Created per Week', lambda v, _: str(v)),
-        ('mrs_merged_per_week', None, 'Merge Requests Merged per Week', lambda v, _: str(v)),
-        ('average_comments_per_mr', None, 'Average Comments per MR', lambda v, _: str(v)),
+        ('total_prs', None, 'Total Pull Requests Created', lambda v, _: str(v)),
+        ('merged_prs', None, 'Total Pull Requests Merged', lambda v, _: str(v)),
+        ('prs_created_per_week', None, 'Pull Requests Created per Week', lambda v, _: str(v)),
+        ('prs_merged_per_week', None, 'Pull Requests Merged per Week', lambda v, _: str(v)),
+        ('average_comments_per_pr', None, 'Average Comments per PR', lambda v, _: str(v)),
         ('average_time_to_merge_hours', 'average_time_to_merge_days', 'Average Time to Merge',
          lambda h, d: f"{h} hours ({d} days)"),
         ('average_time_to_first_comment_hours', None, 'Average Time to First Comment',
@@ -614,9 +615,9 @@ def _calculate_and_display_changes(metrics: Dict) -> None:
     print("-" * 40)
 
     changes = [
-        ('mrs_created_per_week', 'MRs Created per Week Change'),
+        ('prs_created_per_week', 'PRs Created per Week Change'),
         ('average_time_to_merge_hours', 'Average Merge Time Change'),
-        ('average_comments_per_mr', 'Average Comments per MR Change'),
+        ('average_comments_per_pr', 'Average Comments per PR Change'),
         ('average_time_to_first_comment_hours', 'Average Time to First Comment Change'),
         ('average_time_from_first_comment_to_followup_commit_hours',
          'Average Time from First Comment to Follow-up Commit Change'),
@@ -633,7 +634,7 @@ def _calculate_and_display_changes(metrics: Dict) -> None:
 
 def main():
     """Main function to run the metrics calculator"""
-    global GITLAB_TOKEN, PROJECT_ID, WEEKS_BACK, AUTOMATED_DATE, BRANCH, GITLAB_BASE_URL
+    global BITBUCKET_USERNAME, BITBUCKET_APP_PASSWORD, REPO_NAME, WEEKS_BACK, AUTOMATED_DATE, BRANCH, API_BASE_URL
 
     # Validate configuration
     is_valid, errors, config = validate_config()
@@ -653,12 +654,13 @@ def main():
                 return
 
             # Update global configuration
-            GITLAB_TOKEN = new_config['gitlab_token']
-            PROJECT_ID = new_config['project_id']
+            BITBUCKET_USERNAME = new_config['bitbucket_username']
+            BITBUCKET_APP_PASSWORD = new_config['bitbucket_app_password']
+            REPO_NAME = new_config['repo_name']
             WEEKS_BACK = new_config['weeks_back']
             AUTOMATED_DATE = new_config['automated_date']
             BRANCH = new_config['branch']
-            GITLAB_BASE_URL = new_config['gitlab_base_url']
+            API_BASE_URL = new_config['api_base_url']
 
             # Re-validate
             is_valid, errors, config = validate_config()
@@ -671,25 +673,26 @@ def main():
             return
 
     # Initialize calculator with validated configuration
-    calc = GitLabMetricsCalculator(GITLAB_TOKEN, PROJECT_ID, BRANCH)
+    calculator = BitbucketMetricsCalculator(BITBUCKET_USERNAME, BITBUCKET_APP_PASSWORD, REPO_NAME, BRANCH)
 
     # Prompt for manual metrics
     manual_metrics = prompt_for_manual_metrics()
 
     try:
         # Calculate comparative metrics with manual metrics
-        metrics = calc.calculate_comparative_metrics(WEEKS_BACK, manual_metrics)
+        metrics = calculator.calculate_comparative_metrics(WEEKS_BACK, manual_metrics)
+
         if metrics:
             # Display results (same format as GitHub script)
-            print("\n" + "=" * 70)
-            print("GITLAB MR METRICS COMPARATIVE ANALYSIS REPORT")
-            print("=" * 70)
-            print(f"Project: {PROJECT_ID}")
+            print("\n" + "="*70)
+            print("BITBUCKET PR METRICS COMPARATIVE ANALYSIS REPORT")
+            print("="*70)
+            print(f"Repository: {REPO_NAME}")
             print(f"Branch: {metrics.get('branch_analyzed', 'ALL branches')}")
             print(f"Automation Date: {metrics.get('automation_date', 'Not specified')}")
             print(f"Analysis Period: {WEEKS_BACK} week(s) for each comparison period")
             print(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            print("=" * 70)
+            print("="*70)
 
             # Display period metrics using helper function
             _display_period_metrics(metrics, 'beforeAuto')
@@ -698,18 +701,16 @@ def main():
             # Display comparison summary using helper function
             _calculate_and_display_changes(metrics)
 
-            print("=" * 70)
+            print("="*70)
 
-            # Save JSON
-            safe_proj = str(PROJECT_ID).replace('/', '_')
-            output_file = f"gitlab_mr_metrics_comparative_{safe_proj}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            # Save results to JSON file
+            output_file = f"bitbucket_pr_metrics_comparative_{REPO_NAME.replace('/', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             with open(output_file, 'w') as f:
                 json.dump(metrics, f, indent=2)
             print(f"\nResults saved to: {output_file}")
+
     except Exception as e:
         print(f"Error calculating metrics: {e}")
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-
