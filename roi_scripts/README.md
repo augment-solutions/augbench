@@ -82,6 +82,86 @@ All three scripts have been **optimized for high performance** while maintaining
 ## GitHub Scripts
 
 ### GitHub: github_pr_metrics.py (Optimized)
+
+**Standard version** - Analyzes PR metrics with optimized GraphQL queries and parallel processing.
+
+### GitHub: github_pr_metrics_detailed.py (Optimized + Detailed Export)
+
+**Enhanced version** - Includes all optimizations plus detailed PR data export and contributor email mapping.
+
+**Key Differences from Standard Script:**
+- ✅ Exports detailed PR data (`pr_details` field for each period)
+- ✅ Generates contributor email mapping (separate JSON file)
+- ✅ Creates ZIP archive with all output files (`results.zip`)
+- ✅ Same performance optimizations (GraphQL, parallel processing, caching)
+- ✅ 100% backward compatible configuration
+
+**Output Files:**
+1. `github_pr_metrics_comparative_{REPO_NAME}_{TIMESTAMP}.json` - Main metrics with detailed PR data
+2. `github_contributors_mapping_{REPO_NAME}_{TIMESTAMP}.json` - Username to email mapping
+3. `results.zip` - ZIP archive containing both JSON files
+
+**Quick Usage Example:**
+```bash
+export GITHUB_TOKEN="your_token_here"
+export REPO_NAME="myorg/myrepo"
+export WEEKS_BACK=4
+export AUTOMATED_DATE="2024-06-15T00:00:00Z"
+export BRANCH="main"
+python github_pr_metrics_detailed.py
+```
+
+**Detailed PR Data Structure:**
+Each PR in the `pr_details` array includes:
+- PR number, created date, merged date
+- Author username and bot status
+- Comments count and review comments count
+- List of reviewer usernames
+- List of commenter usernames
+
+**Contributor Mapping Structure:**
+```json
+[
+  {
+    "github_username": "alice-github",
+    "emails": ["alice@company.com", "alice.smith@company.com"]
+  }
+]
+```
+
+**Use Cases:**
+- Detailed PR analysis and custom reporting
+- Linking GitHub usernames to corporate email addresses
+- Exporting data for BI tools and analytics platforms
+- Team productivity analysis with individual PR tracking
+
+**Email Extraction:**
+- Automatically extracts email addresses from commit author information
+- Maps emails to GitHub usernames
+- Handles multiple emails per user
+- Excludes bot users and noreply addresses
+- No additional API calls required
+
+**Output Example:**
+```
+Main metrics saved to: github_pr_metrics_comparative_myorg_myrepo_20251007_143022.json
+Contributor mapping saved to: github_contributors_mapping_myorg_myrepo_20251007_143022.json
+
+✅ ZIP archive created: results.zip
+   Contains: github_pr_metrics_comparative_myorg_myrepo_20251007_143022.json
+   Contains: github_contributors_mapping_myorg_myrepo_20251007_143022.json
+
+Data Export Summary:
+- Before automation PRs exported: 45
+- After automation PRs exported: 52
+- Total PRs with detailed data: 97
+- Contributors with email mapping: 15
+```
+
+---
+
+### Configuration Options (All GitHub Scripts)
+
 ### 1) Configuration Options
 
 **Option A: Edit the config block at the top of the file:**
