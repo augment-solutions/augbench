@@ -3,6 +3,7 @@
 Customer-focused tools to quickly quantify ROI from engineering automation. Each script compares “before automation” vs “after automation” over equal time windows and outputs a clear console report plus a JSON file you can share.
 
 - **GitHub**: `github_pr_metrics.py`
+- **GitHub (Detailed CSV)**: `github_pr_metrics_detailed_csv.py`
 - **GitLab**: `gitlab_mr_metrics.py`
 - **Bitbucket**: `bitbucket_pr_metrics.py`
 
@@ -76,6 +77,82 @@ All three scripts have been **optimized for high performance** while maintaining
 - ✅ Identical JSON output format
 - ✅ Same metrics and calculations
 - ✅ Drop-in replacement capability
+
+---
+
+## Script Comparison Table
+
+Quick reference guide to help you choose the right script for your needs:
+
+| Feature | GitHub Standard | GitHub Detailed | GitHub Detailed CSV | GitHub Filtered | GitLab | Bitbucket |
+|---------|----------------|-----------------|---------------------|-----------------|--------|-----------|
+| **Script Name** | `github_pr_metrics.py` | `github_pr_metrics_detailed.py` | `github_pr_metrics_detailed_csv.py` | `github_pr_metrics_filtered.py` | `gitlab_mr_metrics.py` | `bitbucket_pr_metrics.py` |
+| **Platform** | GitHub | GitHub | GitHub | GitHub | GitLab | Bitbucket |
+| **Optimization** | GraphQL + Parallel | GraphQL + Parallel | GraphQL + Parallel | GraphQL + Parallel | GraphQL + Parallel | Parallel Processing |
+| **Speedup** | 5-8x | 5-8x | 5-8x | 5-8x | 5-8x | 2-3x |
+| **API Call Reduction** | 96% | 96% | 96% | 96% | 95-98% | N/A (concurrent) |
+| | | | | | | |
+| **Core Metrics** | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics |
+| **Comparative Analysis** | ✅ Before/After | ✅ Before/After | ✅ Before/After | ✅ Before/After | ✅ Before/After | ✅ Before/After |
+| **Bot Filtering** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Progress Tracking** | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA |
+| **Response Caching** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+| | | | | | | |
+| **Detailed PR Data Export** | ❌ No | ✅ Yes (JSON) | ✅ Yes (CSV) | ❌ No | ❌ No | ❌ No |
+| **Contributor Email Mapping** | ❌ No | ✅ Yes (JSON) | ✅ Yes (CSV) | ❌ No | ❌ No | ❌ No |
+| **ZIP Archive Output** | ❌ No | ✅ Yes | ✅ Yes | ❌ No | ❌ No | ❌ No |
+| **Multi-Repository Support** | ❌ No | ❌ No | ✅ Yes (semicolon-separated) | ❌ No | ❌ No | ❌ No |
+| **CSV Output Format** | ❌ No | ❌ No | ✅ Yes (3 CSV types) | ❌ No | ❌ No | ❌ No |
+| **Contributor Filtering** | ❌ No | ❌ No | ❌ No | ✅ Yes (by email/username) | ❌ No | ❌ No |
+| **Email-to-Username Conversion** | ❌ No | ❌ No | ❌ No | ✅ Yes (automatic) | ❌ No | ❌ No |
+| **Team/Individual Analysis** | ❌ No | ❌ No | ❌ No | ✅ Yes | ❌ No | ❌ No |
+| | | | | | | |
+| **Output Files** | 1 JSON | 2 JSON + 1 ZIP | 3-4 CSV + 1 ZIP | 1 JSON | 1 JSON | 1 JSON |
+| **Configuration Complexity** | Simple | Simple | Simple | Simple + Filter | Simple | Simple |
+| **Backward Compatible** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+| | | | | | | |
+| **Best For** | Standard ROI analysis | Detailed data export & BI tools | Multi-repo CSV export | Team/individual metrics | GitLab projects | Bitbucket repos |
+| **Use Case** | Quick metrics comparison | Custom reporting, analytics | Bulk analysis, spreadsheets | Filtered contributor analysis | GitLab MR analysis | Bitbucket PR analysis |
+
+### When to Use Each Script
+
+**GitHub Standard (`github_pr_metrics.py`):**
+- ✅ Standard ROI analysis and reporting
+- ✅ Quick metrics comparison (before/after automation)
+- ✅ All contributors in the repository
+- ✅ Single JSON output file
+
+**GitHub Detailed (`github_pr_metrics_detailed.py`):**
+- ✅ Need detailed PR data for each period
+- ✅ Exporting to BI tools or analytics platforms
+- ✅ Linking GitHub usernames to corporate emails
+- ✅ Custom reporting and data analysis
+- ✅ Convenient ZIP archive for sharing
+
+**GitHub Detailed CSV (`github_pr_metrics_detailed_csv.py`):**
+- ✅ Need CSV format for spreadsheet analysis
+- ✅ Analyzing multiple repositories in one run
+- ✅ Exporting detailed PR metrics to Excel/Google Sheets
+- ✅ Bulk data export for custom analysis
+- ✅ Convenient ZIP archive with all CSV files
+- ✅ Repository-specific filenames for easy organization
+
+**GitHub Filtered (`github_pr_metrics_filtered.py`):**
+- ✅ Analyzing specific team members or individuals
+- ✅ Comparing different teams or departments
+- ✅ Tracking new hire onboarding metrics
+- ✅ Department-specific productivity analysis
+- ✅ Need to filter by email addresses or usernames
+
+**GitLab (`gitlab_mr_metrics.py`):**
+- ✅ GitLab projects and merge requests
+- ✅ Same metrics as GitHub but for GitLab
+- ✅ GraphQL optimization for fast analysis
+
+**Bitbucket (`bitbucket_pr_metrics.py`):**
+- ✅ Bitbucket repositories and pull requests
+- ✅ Same metrics as GitHub but for Bitbucket
+- ✅ Parallel processing optimization
 
 ---
 
@@ -156,6 +233,102 @@ Data Export Summary:
 - After automation PRs exported: 52
 - Total PRs with detailed data: 97
 - Contributors with email mapping: 15
+```
+
+### GitHub: github_pr_metrics_detailed_csv.py (Optimized + CSV Export + Multi-Repo)
+
+**CSV Export version** - Generates detailed PR metrics in CSV format with multi-repository support and automatic ZIP compression.
+
+**Key Features:**
+- ✅ CSV output format (compatible with Excel, Google Sheets, and data analysis tools)
+- ✅ Multi-repository support (analyze multiple repos in one run)
+- ✅ Automatic ZIP compression of all generated CSV files
+- ✅ Repository-specific filenames for easy organization
+- ✅ Same performance optimizations (GraphQL, parallel processing, caching)
+- ✅ 100% backward compatible configuration (single repo still works)
+
+**Output Files (per repository):**
+1. `github_pr_metrics_summary_{REPO_NAME}_{TIMESTAMP}.csv` - Summary metrics (beforeAuto and afterAuto periods)
+2. `github_contributors_mapping_{REPO_NAME}_{TIMESTAMP}.csv` - Contributor email mapping
+3. `github_pr_details_beforeAuto_{REPO_NAME}_{TIMESTAMP}.csv` - Detailed PR data for before period
+4. `github_pr_details_afterAuto_{REPO_NAME}_{TIMESTAMP}.csv` - Detailed PR data for after period
+5. `results.zip` - ZIP archive containing all CSV files from all repositories
+
+**Multi-Repository Usage:**
+```bash
+# Single repository (backward compatible)
+export GITHUB_TOKEN="your_token_here"
+export REPO_NAME="myorg/myrepo"
+export WEEKS_BACK=4
+export AUTOMATED_DATE="2024-06-15T00:00:00Z"
+python github_pr_metrics_detailed_csv.py
+
+# Multiple repositories (semicolon-separated)
+export GITHUB_TOKEN="your_token_here"
+export REPO_NAME="owner/repo1;owner/repo2;sharath/angular"
+export WEEKS_BACK=4
+export AUTOMATED_DATE="2024-06-15T00:00:00Z"
+python github_pr_metrics_detailed_csv.py
+```
+
+**CSV Output Formats:**
+
+**Summary CSV Columns:**
+- period, total_prs, merged_prs, weeks_analyzed
+- analysis_start_date, analysis_end_date
+- prs_created_per_week, prs_merged_per_week
+- average_comments_per_pr, average_time_to_merge_hours, average_time_to_merge_days
+- average_time_to_first_comment_hours, average_time_from_first_comment_to_followup_commit_hours
+- unique_contributors_count, average_first_review_time_hours, average_remediation_time_hours
+
+**PR Details CSV Columns (25 columns):**
+- repo, number, title, author, state, merged
+- created_at, first_comment_at, first_followup_commit_at, merged_at, closed_at
+- time_to_first_comment_hours, time_from_first_comment_to_merge_hours, time_from_first_comment_to_followup_commit_hours
+- time_to_merge_hours, time_to_close_hours
+- first_comment_type, first_comment_author
+- total_loc_updated, total_commits, commits_before_merge
+- total_comments, issue_comments, review_comments, review_submissions
+
+**Contributor Mapping CSV Columns:**
+- github_username, emails (pipe-separated list)
+
+**Use Cases:**
+- Bulk analysis of multiple repositories
+- Exporting metrics to Excel or Google Sheets for further analysis
+- Creating custom dashboards and reports
+- Comparing metrics across multiple teams or projects
+- Archiving analysis results in a single ZIP file
+
+**Error Handling:**
+- If one repository fails, the script continues processing remaining repositories
+- Failed repositories are logged with error details
+- Partial results are preserved in the ZIP archive
+
+**Output Example:**
+```
+Repositories to process: 3
+  1. owner/repo1
+  2. owner/repo2
+  3. sharath/angular
+
+Processing repository: owner/repo1
+✓ Summary metrics CSV: github_pr_metrics_summary_owner_repo1_20251007_143022.csv
+✓ Contributor mapping CSV: github_contributors_mapping_owner_repo1_20251007_143022.csv
+✓ Before automation PR details CSV: github_pr_details_beforeAuto_owner_repo1_20251007_143022.csv
+✓ After automation PR details CSV: github_pr_details_afterAuto_owner_repo1_20251007_143022.csv
+
+Processing repository: owner/repo2
+...
+
+CREATING ZIP ARCHIVE
+✓ ZIP archive created: results.zip
+  Contains 12 CSV files
+
+EXECUTION SUMMARY
+Repositories processed: 3
+Total CSV files generated: 12
+Total execution time: 5.2 minutes
 ```
 
 ---
