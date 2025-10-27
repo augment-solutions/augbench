@@ -1459,11 +1459,19 @@ def main():
         all_generated_files.extend(generated_files)
 
     # Create ZIP archive if we have generated files
+    zip_filename = "results.zip"
     if all_generated_files:
         print(f"\n{'='*70}")
         print("CREATING ZIP ARCHIVE")
         print(f"{'='*70}")
-        create_results_zip(all_generated_files, "results.zip")
+        create_results_zip(all_generated_files, zip_filename)
+
+        # Upload ZIP file to webhook if RESPONSE_URL is provided
+        # if RESPONSE_URL and RESPONSE_URL.strip():
+            # upload_zip_to_webhook(zip_filename, RESPONSE_URL, TOKEN)
+        # else:
+            # print("\n⚠ RESPONSE_URL not configured. ZIP file will not be uploaded to webhook.")
+            # print("  To enable automatic upload, set the RESPONSE_URL environment variable.")
 
     # Display final summary
     elapsed_time = time.time() - start_time
@@ -1477,5 +1485,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
