@@ -248,6 +248,7 @@ class GitLabMRAnalyzer:
                   id
                   username
                   name
+                  email
                 }
                 targetBranch
                 userNotesCount
@@ -266,6 +267,7 @@ class GitLabMRAnalyzer:
                           id
                           username
                           name
+                          email
                         }
                       }
                     }
@@ -319,14 +321,23 @@ class GitLabMRAnalyzer:
                     if not note.get('system', False):
                         author = note.get('author', {})
                         author_username = author.get('username', '')
+                        author_email = author.get('email', '')
                         if author_username:
                             commenters.add(author_username)
+                            # Collect contributor emails
+                            if author_email:
+                                self.contributor_emails[author_username].add(author_email)
                     discussions.append(note)
-            
+
             # Get author info
             author = node.get('author', {})
             author_username = author.get('username', '')
+            author_email = author.get('email', '')
             is_bot = author_username.endswith('[bot]') if author_username else False
+
+            # Collect author email
+            if author_username and author_email:
+                self.contributor_emails[author_username].add(author_email)
             
             # Get changes count
             diff_stats = node.get('diffStatsSummary', {})
@@ -652,25 +663,29 @@ def process_single_project(project_id: str, gitlab_token: str, weeks_back: int,
     project_safe_name = project_id.replace('/', '_').replace('%2F', '_')
     
     csv_files = []
-    
+
+    # Convert MRData objects to dictionaries for CSV writing
+    before_mrs_dicts = [mr.to_summary_dict() for mr in before_mrs]
+    after_mrs_dicts = [mr.to_summary_dict() for mr in after_mrs]
+
     # Write MR details CSVs
-    if before_mrs:
+    if before_mrs_dicts:
         before_file = f"gitlab_mr_details_beforeAuto_{project_safe_name}_{timestamp}.csv"
-        write_mr_csv(before_file, before_mrs, project_id)
+        write_mr_csv(before_file, before_mrs_dicts, project_id)
         csv_files.append(before_file)
-    
-    if after_mrs:
+
+    if after_mrs_dicts:
         after_file = f"gitlab_mr_details_afterAuto_{project_safe_name}_{timestamp}.csv"
-        write_mr_csv(after_file, after_mrs, project_id)
+        write_mr_csv(after_file, after_mrs_dicts, project_id)
         csv_files.append(after_file)
-    
-    # Write summary CSV (placeholder - would need full metrics calculation)
+
+    # Write summary CSV with full metrics calculation
     summary_file = f"gitlab_mr_metrics_summary_{project_safe_name}_{timestamp}.csv"
     summary_metrics = {
         "beforeAuto_total_mrs": len(before_mrs),
-        "beforeAuto_merged_mrs": len([m for m in before_mrs if m.get("merged_at")]),
+        "beforeAuto_merged_mrs": len([m for m in before_mrs if m.merged_at]),
         "afterAuto_total_mrs": len(after_mrs),
-        "afterAuto_merged_mrs": len([m for m in after_mrs if m.get("merged_at")]),
+        "afterAuto_merged_mrs": len([m for m in after_mrs if m.merged_at]),
     }
     write_summary_csv(summary_file, summary_metrics)
     csv_files.append(summary_file)
