@@ -49,7 +49,10 @@ BRANCH = os.environ.get('BRANCH', '')  # Base branch for PRs (leave empty to ana
 # GitHub API configuration
 API_BASE_URL = os.environ.get('API_BASE_URL', 'https://api.github.com')
 API_VERSION = os.environ.get('API_VERSION', 'application/vnd.github.v3+json')
-GRAPHQL_URL = f"{API_BASE_URL}/graphql"
+
+def get_graphql_url():
+    """Get GraphQL URL dynamically based on current API_BASE_URL"""
+    return f"{API_BASE_URL}/graphql"
 
 # Performance configuration
 MAX_PARALLEL_REQUESTS = 10  # Maximum parallel API requests
@@ -389,7 +392,7 @@ class OptimizedGitHubMetricsCalculator:
 
         try:
             response = self.session.post(
-                GRAPHQL_URL,
+                get_graphql_url(),
                 json={'query': query, 'variables': variables or {}},
                 timeout=30
             )
@@ -608,6 +611,8 @@ class OptimizedGitHubMetricsCalculator:
                     })
 
         # Process timeline items (comments and reviews)
+        # Note: ISSUE_COMMENT is already counted in pr_data['comments']['totalCount']
+        # So we only count PULL_REQUEST_REVIEW here to avoid double-counting
         review_comment_count = 0
         for item in pr_data.get('timelineItems', {}).get('nodes', []):
             if item and item.get('author'):
@@ -615,9 +620,11 @@ class OptimizedGitHubMetricsCalculator:
                 is_bot = item['author'].get('__typename') == 'Bot' or author_login.endswith('[bot]')
                 if not is_bot:
                     commenters.add(author_login)
-                # Count both ISSUE_COMMENT and PULL_REQUEST_REVIEW as comments
-                if item['__typename'] in ['ISSUE_COMMENT', 'PULL_REQUEST_REVIEW', 'IssueComment', 'PullRequestReview']:
+                # Only count PULL_REQUEST_REVIEW (ISSUE_COMMENT already in comments_count)
+                if item['__typename'] in ['PULL_REQUEST_REVIEW', 'PullRequestReview']:
                     review_comment_count += 1
+                # Store all timeline items for reference
+                if item['__typename'] in ['ISSUE_COMMENT', 'PULL_REQUEST_REVIEW', 'IssueComment', 'PullRequestReview']:
                     timeline_items_list.append({
                         'type': item['__typename'],
                         'author': author_login,
@@ -717,7 +724,10 @@ class OptimizedGitHubMetricsCalculator:
             if commit_date_str:
                 commit_date = datetime.fromisoformat(commit_date_str.replace('Z', '+00:00'))
                 if commit_date > first_comment_time:
-                    if commit.get('author', {}).get('login') == pr.author:
+                    # Check if commit author matches PR author
+                    # Commit author is nested under commit['commit']['author']['name']
+                    commit_author_name = commit.get('commit', {}).get('author', {}).get('name', '')
+                    if commit_author_name and commit_author_name == pr.author:
                         if earliest_followup is None or commit_date < earliest_followup:
                             earliest_followup = commit_date
 
