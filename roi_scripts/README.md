@@ -5,6 +5,7 @@ Customer-focused tools to quickly quantify ROI from engineering automation. Each
 - **GitHub**: `github_pr_metrics.py`
 - **GitHub (Detailed CSV)**: `github_pr_metrics_detailed_csv.py`
 - **GitLab**: `gitlab_mr_metrics.py`
+- **GitLab (Detailed CSV)**: `gitlab_mr_metrics_detailed_csv.py`
 - **Bitbucket**: `bitbucket_pr_metrics.py`
 
 ## What they measure (all scripts)
@@ -84,35 +85,35 @@ All three scripts have been **optimized for high performance** while maintaining
 
 Quick reference guide to help you choose the right script for your needs:
 
-| Feature | GitHub Standard | GitHub Detailed | GitHub Detailed CSV | GitHub Filtered | GitLab | Bitbucket |
-|---------|----------------|-----------------|---------------------|-----------------|--------|-----------|
-| **Script Name** | `github_pr_metrics.py` | `github_pr_metrics_detailed.py` | `github_pr_metrics_detailed_csv.py` | `github_pr_metrics_filtered.py` | `gitlab_mr_metrics.py` | `bitbucket_pr_metrics.py` |
-| **Platform** | GitHub | GitHub | GitHub | GitHub | GitLab | Bitbucket |
-| **Optimization** | GraphQL + Parallel | GraphQL + Parallel | GraphQL + Parallel | GraphQL + Parallel | GraphQL + Parallel | Parallel Processing |
-| **Speedup** | 5-8x | 5-8x | 5-8x | 5-8x | 5-8x | 2-3x |
-| **API Call Reduction** | 96% | 96% | 96% | 96% | 95-98% | N/A (concurrent) |
-| | | | | | | |
-| **Core Metrics** | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics |
-| **Comparative Analysis** | ✅ Before/After | ✅ Before/After | ✅ Before/After | ✅ Before/After | ✅ Before/After | ✅ Before/After |
-| **Bot Filtering** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Progress Tracking** | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA |
-| **Response Caching** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
-| | | | | | | |
-| **Detailed PR Data Export** | ❌ No | ✅ Yes (JSON) | ✅ Yes (CSV) | ❌ No | ❌ No | ❌ No |
-| **Contributor Email Mapping** | ❌ No | ✅ Yes (JSON) | ✅ Yes (CSV) | ❌ No | ❌ No | ❌ No |
-| **ZIP Archive Output** | ❌ No | ✅ Yes | ✅ Yes | ❌ No | ❌ No | ❌ No |
-| **Multi-Repository Support** | ❌ No | ❌ No | ✅ Yes (semicolon-separated) | ❌ No | ❌ No | ❌ No |
-| **CSV Output Format** | ❌ No | ❌ No | ✅ Yes (3 CSV types) | ❌ No | ❌ No | ❌ No |
-| **Contributor Filtering** | ❌ No | ❌ No | ❌ No | ✅ Yes (by email/username) | ❌ No | ❌ No |
-| **Email-to-Username Conversion** | ❌ No | ❌ No | ❌ No | ✅ Yes (automatic) | ❌ No | ❌ No |
-| **Team/Individual Analysis** | ❌ No | ❌ No | ❌ No | ✅ Yes | ❌ No | ❌ No |
-| | | | | | | |
-| **Output Files** | 1 JSON | 2 JSON + 1 ZIP | 3-4 CSV + 1 ZIP | 1 JSON | 1 JSON | 1 JSON |
-| **Configuration Complexity** | Simple | Simple | Simple | Simple + Filter | Simple | Simple |
-| **Backward Compatible** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
-| | | | | | | |
-| **Best For** | Standard ROI analysis | Detailed data export & BI tools | Multi-repo CSV export | Team/individual metrics | GitLab projects | Bitbucket repos |
-| **Use Case** | Quick metrics comparison | Custom reporting, analytics | Bulk analysis, spreadsheets | Filtered contributor analysis | GitLab MR analysis | Bitbucket PR analysis |
+| Feature | GitHub Standard | GitHub Detailed | GitHub Detailed CSV | GitHub Filtered | GitLab | GitLab Detailed CSV | Bitbucket |
+|---------|----------------|-----------------|---------------------|-----------------|--------|---------------------|-----------|
+| **Script Name** | `github_pr_metrics.py` | `github_pr_metrics_detailed.py` | `github_pr_metrics_detailed_csv.py` | `github_pr_metrics_filtered.py` | `gitlab_mr_metrics.py` | `gitlab_mr_metrics_detailed_csv.py` | `bitbucket_pr_metrics.py` |
+| **Platform** | GitHub | GitHub | GitHub | GitHub | GitLab | GitLab | Bitbucket |
+| **Optimization** | GraphQL + Parallel | GraphQL + Parallel | GraphQL + Parallel | GraphQL + Parallel | GraphQL + Parallel | GraphQL + Parallel | Parallel Processing |
+| **Speedup** | 5-8x | 5-8x | 5-8x | 5-8x | 5-8x | 5-8x | 2-3x |
+| **API Call Reduction** | 96% | 96% | 96% | 96% | 95-98% | 95-98% | N/A (concurrent) |
+| | | | | | | | |
+| **Core Metrics** | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics | ✅ All standard metrics |
+| **Comparative Analysis** | ✅ Before/After | ✅ Before/After | ✅ Before/After | ✅ Before/After | ✅ Before/After | ✅ Before/After | ✅ Before/After |
+| **Bot Filtering** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Progress Tracking** | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA | ✅ Real-time ETA |
+| **Response Caching** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+| | | | | | | | |
+| **Detailed MR/PR Data Export** | ❌ No | ✅ Yes (JSON) | ✅ Yes (CSV) | ❌ No | ❌ No | ✅ Yes (CSV) | ❌ No |
+| **Contributor Email Mapping** | ❌ No | ✅ Yes (JSON) | ✅ Yes (CSV) | ❌ No | ❌ No | ✅ Yes (CSV) | ❌ No |
+| **ZIP Archive Output** | ❌ No | ✅ Yes | ✅ Yes | ❌ No | ❌ No | ✅ Yes | ❌ No |
+| **Multi-Repository/Project Support** | ❌ No | ❌ No | ✅ Yes (semicolon-separated) | ❌ No | ❌ No | ✅ Yes (semicolon-separated) | ❌ No |
+| **CSV Output Format** | ❌ No | ❌ No | ✅ Yes (3 CSV types) | ❌ No | ❌ No | ✅ Yes (3 CSV types) | ❌ No |
+| **Contributor Filtering** | ❌ No | ❌ No | ❌ No | ✅ Yes (by email/username) | ❌ No | ❌ No | ❌ No |
+| **Email-to-Username Conversion** | ❌ No | ❌ No | ❌ No | ✅ Yes (automatic) | ❌ No | ❌ No | ❌ No |
+| **Team/Individual Analysis** | ❌ No | ❌ No | ❌ No | ✅ Yes | ❌ No | ❌ No | ❌ No |
+| | | | | | | | |
+| **Output Files** | 1 JSON | 2 JSON + 1 ZIP | 3-4 CSV + 1 ZIP | 1 JSON | 1 JSON | 3-4 CSV + 1 ZIP | 1 JSON |
+| **Configuration Complexity** | Simple | Simple | Simple | Simple + Filter | Simple | Simple | Simple |
+| **Backward Compatible** | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+| | | | | | | | |
+| **Best For** | Standard ROI analysis | Detailed data export & BI tools | Multi-repo CSV export | Team/individual metrics | GitLab MR analysis | Multi-project CSV export | Bitbucket repos |
+| **Use Case** | Quick metrics comparison | Custom reporting, analytics | Bulk analysis, spreadsheets | Filtered contributor analysis | GitLab projects | Bulk analysis, spreadsheets | Bitbucket PR analysis |
 
 ### When to Use Each Script
 
@@ -148,6 +149,15 @@ Quick reference guide to help you choose the right script for your needs:
 - ✅ GitLab projects and merge requests
 - ✅ Same metrics as GitHub but for GitLab
 - ✅ GraphQL optimization for fast analysis
+- ✅ Single JSON output file
+
+**GitLab Detailed CSV (`gitlab_mr_metrics_detailed_csv.py`):**
+- ✅ Need CSV format for spreadsheet analysis
+- ✅ Analyzing multiple GitLab projects in one run
+- ✅ Exporting detailed MR metrics to Excel/Google Sheets
+- ✅ Bulk data export for custom analysis
+- ✅ Convenient ZIP archive with all CSV files
+- ✅ Project-specific filenames for easy organization
 
 **Bitbucket (`bitbucket_pr_metrics.py`):**
 - ✅ Bitbucket repositories and pull requests
@@ -592,6 +602,76 @@ python3 bitbucket_pr_metrics.py
 Notes
 - Works with GitLab SaaS and self-managed. For self-signed certs, use SSL envs above.
 - The script automatically paginates and retries on transient errors.
+
+### GitLab: gitlab_mr_metrics_detailed_csv.py (Optimized + Detailed CSV Export)
+
+**CSV Export version** - Generates detailed MR metrics in CSV format with multi-project support and automatic ZIP compression.
+
+**Key Features:**
+- ✅ CSV output format (compatible with Excel, Google Sheets, and data analysis tools)
+- ✅ Multi-project support (analyze multiple projects in one run)
+- ✅ Automatic ZIP compression of all generated CSV files
+- ✅ Project-specific filenames for easy organization
+- ✅ Same performance optimizations (GraphQL, parallel processing, caching)
+- ✅ 100% backward compatible configuration (single project still works)
+
+**Output Files (per project):**
+1. `gitlab_mr_metrics_summary_{PROJECT_ID}_{TIMESTAMP}.csv` - Summary metrics (beforeAuto and afterAuto periods)
+2. `gitlab_contributors_mapping_{PROJECT_ID}_{TIMESTAMP}.csv` - Contributor email mapping
+3. `gitlab_mr_details_beforeAuto_{PROJECT_ID}_{TIMESTAMP}.csv` - Detailed MR data for before period
+4. `gitlab_mr_details_afterAuto_{PROJECT_ID}_{TIMESTAMP}.csv` - Detailed MR data for after period
+5. `results.zip` - ZIP archive containing all CSV files from all projects
+
+**Multi-Project Usage:**
+```bash
+# Single project (backward compatible)
+export GITLAB_TOKEN="your_token_here"
+export PROJECT_ID="namespace/project"
+export WEEKS_BACK=4
+export AUTOMATED_DATE="2024-06-15T00:00:00Z"
+python gitlab_mr_metrics_detailed_csv.py
+
+# Multiple projects (semicolon-separated)
+export GITLAB_TOKEN="your_token_here"
+export PROJECT_ID="namespace/project1;namespace/project2;12345"
+export WEEKS_BACK=4
+export AUTOMATED_DATE="2024-06-15T00:00:00Z"
+python gitlab_mr_metrics_detailed_csv.py
+```
+
+**CSV Output Formats:**
+
+**Summary CSV Columns:**
+- period, total_mrs, merged_mrs, weeks_analyzed
+- analysis_start_date, analysis_end_date
+- mrs_created_per_week, mrs_merged_per_week
+- average_comments_per_mr, average_time_to_merge_hours, average_time_to_merge_days
+- average_time_to_first_comment_hours, average_time_from_first_comment_to_followup_commit_hours
+- unique_contributors_count, average_first_review_time_hours, average_remediation_time_hours
+
+**MR Details CSV Columns (25 columns):**
+- project, iid, title, author, state, merged
+- created_at, first_comment_at, first_followup_commit_at, merged_at, closed_at
+- time_to_first_comment_hours, time_from_first_comment_to_merge_hours, time_from_first_comment_to_followup_commit_hours
+- time_to_merge_hours, time_to_close_hours
+- first_comment_type, first_comment_author
+- total_changes, total_commits, commits_before_merge
+- total_comments, discussion_comments, review_comments, review_submissions
+
+**Contributor Mapping CSV Columns:**
+- gitlab_username, emails (pipe-separated list)
+
+**Use Cases:**
+- Bulk analysis of multiple GitLab projects
+- Exporting metrics to Excel or Google Sheets for further analysis
+- Creating custom dashboards and reports
+- Comparing metrics across multiple teams or projects
+- Archiving analysis results in a single ZIP file
+
+**Error Handling:**
+- If one project fails, the script continues processing remaining projects
+- Failed projects are logged with error details
+- Partial results are preserved in the ZIP archive
 
 ---
 
