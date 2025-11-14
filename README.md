@@ -79,72 +79,27 @@ node bin/augbench.js report --charts
 
 
 
-## ROI Scripts: PR/MR Metrics Analysis
+## ROI Scripts: GitHub PR Metrics
 
-Analyze pull request/merge request activity before and after an automation date across multiple platforms. All scripts support analyzing all branches or specific base branches and generate detailed CSV outputs for comprehensive analysis.
+Analyze GitHub PR activity before and after an automation date. Supports analyzing all branches or a specific base branch.
 
-### GitHub PR Metrics
-- Script: `roi_scripts/github_pr_metrics_detailed_csv.py`
-- Generates detailed CSV reports with 25+ metrics per PR
-- Supports multi-repository analysis
-- Configure via environment variables or interactive prompts
+- Script: roi_scripts/github_pr_metrics.py
+- Configure via constants at top of the script or environment variables
 
-### Azure DevOps PR Metrics
-- Script: `roi_scripts/azure_devops_pr_metrics_detailed_csv.py`
-- **Purpose**: Analyze Azure DevOps pull request metrics with detailed CSV output
-- **Functionality**: Replicates GitHub script functionality for Azure DevOps, providing identical metrics and output formats
-- **Features**:
-  - Detailed PR data in CSV format (25 columns matching GitHub version)
-  - Contributor email mapping for username-to-email correlation
-  - Multi-repository support with semicolon-separated repo names
-  - Performance optimizations with parallel processing and caching
-  - Real-time progress tracking with ETA
-  - Automatic ZIP archive creation for easy sharing
+Usage examples:
 
-### GitLab MR Metrics
-- Script: `roi_scripts/gitlab_mr_metrics_detailed_csv.py`
-- Analyze GitLab merge request metrics with CSV export
-- Multi-project support and detailed reporting
-
-### Prerequisites
-- Python 3.8+
-- `pip install requests`
-- Platform-specific access tokens:
-  - **GitHub**: Personal Access Token with `repo` scope
-  - **Azure DevOps**: Personal Access Token with Code (read) permissions
-  - **GitLab**: Personal Access Token with `api` or `read_api` scope
-
-### Usage Examples
-
-**GitHub:**
 ```bash
-GITHUB_TOKEN=ghp_xxx REPO_NAME=owner/repo WEEKS_BACK=4 AUTOMATED_DATE="2025-01-15T00:00:00Z" \
-  python3 roi_scripts/github_pr_metrics_detailed_csv.py
+# Analyze ALL branches (default when BRANCH is empty)
+GITHUB_TOKEN=ghp_xxx REPO_NAME=owner/repo WEEKS_BACK=2 AUTOMATED_DATE="2025-01-15" BRANCH="" \
+  python3 roi_scripts/github_pr_metrics.py
+
+# Analyze a specific branch only (e.g., main)
+GITHUB_TOKEN=ghp_xxx REPO_NAME=owner/repo WEEKS_BACK=4 AUTOMATED_DATE="2025-01-15T00:00:00Z" BRANCH=main \
+  python3 roi_scripts/github_pr_metrics.py
 ```
 
-**Azure DevOps:**
-```bash
-AZURE_DEVOPS_PAT=xxx AZURE_DEVOPS_ORG=https://dev.azure.com/yourorg \
-AZURE_DEVOPS_PROJECT=projectname REPO_NAME=reponame WEEKS_BACK=4 \
-AUTOMATED_DATE="2025-01-15T00:00:00Z" BRANCH=main \
-  python3 roi_scripts/azure_devops_pr_metrics_detailed_csv.py
-```
+Tip: You can also run it via npm:
 
-**GitLab:**
-```bash
-GITLAB_TOKEN=glpat-xxx PROJECT_ID=namespace/project WEEKS_BACK=4 \
-AUTOMATED_DATE="2025-01-15T00:00:00Z" \
-  python3 roi_scripts/gitlab_mr_metrics_detailed_csv.py
-```
-
-### Output Files
-Each script generates:
-- **Summary metrics CSV**: Comparative analysis (before/after automation)
-- **Detailed PR/MR CSV**: Individual PR/MR data with 25+ metrics
-- **Contributor mapping CSV**: Username-to-email correlation
-- **ZIP archive**: All CSV files compressed for easy sharing
-
-Tip: You can also run GitHub metrics via npm:
 ```bash
 npm run pr-metrics
 ```
