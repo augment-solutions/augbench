@@ -156,11 +156,11 @@ class ProgressTracker:
         """Update progress"""
         self.current += increment
         current_time = time.time()
-        
+
         # Update display every second or at completion
         if current_time - self.last_update >= 1.0 or self.current >= self.total:
             elapsed = current_time - self.start_time
-            if self.current > 0:
+            if self.current > 0 and elapsed > 0:
                 rate = self.current / elapsed
                 remaining = (self.total - self.current) / rate if rate > 0 else 0
                 eta_str = f"ETA: {int(remaining)}s" if remaining > 0 else "Done"
@@ -522,8 +522,13 @@ class OptimizedGitHubMetricsCalculator:
         return self.graphql_query(query, variables)
 
     def get_pull_requests_optimized(self, weeks_back: int, start_date: str = None,
-                                   end_date: str = None, period_name: str = "") -> List[PRData]:
-        """Get all pull requests within the specified time period using GraphQL"""
+                                   end_date: str = None, period_name: str = "") -> Tuple[List[PRData], int]:
+        """
+        Get all pull requests within the specified time period using GraphQL.
+
+        Returns:
+            Tuple of (list of PRData objects, count of failed PRs)
+        """
         if start_date is None or end_date is None:
             start_date, end_date = self.calculate_date_range(weeks_back)
 
@@ -536,48 +541,73 @@ class OptimizedGitHubMetricsCalculator:
         cursor = None
         has_more = True
         batch_count = 0
+        failed_pr_count = 0
 
         while has_more:
             batch_count += 1
             print(f"  Fetching batch {batch_count}...")
 
-            result = self.fetch_prs_batch_graphql(start_date, end_date, cursor)
-            if not result or 'data' not in result:
-                break
-
-            pr_nodes = result['data']['repository']['pullRequests']['nodes']
-            page_info = result['data']['repository']['pullRequests']['pageInfo']
-
-            for pr_data in pr_nodes:
-                if not pr_data:
-                    continue
-
-                created_at = pr_data['createdAt']
-                created_datetime = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-
-                # Check date range
-                if created_datetime > end_datetime:
-                    continue
-                elif created_datetime < start_datetime:
-                    has_more = False
+            try:
+                result = self.fetch_prs_batch_graphql(start_date, end_date, cursor)
+                if not result or 'data' not in result:
+                    print(f"  Warning: Batch {batch_count} returned no data. Skipping...")
+                    # Try to continue with next batch if we have a cursor
+                    if cursor:
+                        # We can't continue without knowing the next cursor
+                        print(f"  Cannot continue without valid response. Stopping batch fetch.")
+                        break
                     break
 
-                # Skip if branch filter doesn't match
-                if self.branch and pr_data['baseRefName'] != self.branch:
-                    continue
+                pr_nodes = result['data']['repository']['pullRequests']['nodes']
+                page_info = result['data']['repository']['pullRequests']['pageInfo']
 
-                # Process PR data into our data structure
-                pr = self._process_pr_graphql_data(pr_data)
-                all_prs.append(pr)
+                for pr_data in pr_nodes:
+                    if not pr_data:
+                        continue
 
-                # NEW: Extract emails from this PR
-                self._extract_emails_from_pr(pr)
+                    try:
+                        created_at = pr_data['createdAt']
+                        created_datetime = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
 
-            cursor = page_info['endCursor']
-            has_more = has_more and page_info['hasNextPage']
+                        # Check date range
+                        if created_datetime > end_datetime:
+                            continue
+                        elif created_datetime < start_datetime:
+                            has_more = False
+                            break
+
+                        # Skip if branch filter doesn't match
+                        if self.branch and pr_data['baseRefName'] != self.branch:
+                            continue
+
+                        # Process PR data into our data structure
+                        pr = self._process_pr_graphql_data(pr_data)
+                        all_prs.append(pr)
+
+                        # NEW: Extract emails from this PR
+                        self._extract_emails_from_pr(pr)
+                    except Exception as e:
+                        pr_number = pr_data.get('number', 'unknown') if pr_data else 'unknown'
+                        print(f"  Warning: Failed to process PR #{pr_number}: {e}")
+                        failed_pr_count += 1
+                        continue
+
+                cursor = page_info['endCursor']
+                has_more = has_more and page_info['hasNextPage']
+
+            except Exception as e:
+                print(f"  Error fetching batch {batch_count}: {e}")
+                print(f"  Continuing with remaining batches...")
+                # If we have a cursor, we can't safely continue as we don't know the next cursor
+                # So we break here to avoid infinite loops or missing data
+                if cursor:
+                    print(f"  Cannot safely determine next batch. Stopping batch fetch.")
+                break
 
         print(f"Found {len(all_prs)} PRs for {period_name}")
-        return all_prs
+        if failed_pr_count > 0:
+            print(f"Failed to process {failed_pr_count} PRs due to errors")
+        return all_prs, failed_pr_count
 
     def _process_pr_graphql_data(self, pr_data: Dict) -> PRData:
         """Process GraphQL PR data into PRData object"""
@@ -742,17 +772,20 @@ class OptimizedGitHubMetricsCalculator:
         """
         Calculate metrics for a specific time period using optimized approach.
 
-        NEW: Returns enhanced metrics including detailed PR data for export.
+        NEW: Returns enhanced metrics including detailed PR data for export and failure tracking.
         """
         print(f"\nCalculating {period_name} metrics for {self.repo} over {weeks_back} week(s)...")
         print(f"Date range: {start_date} to {end_date}")
 
         # Fetch PRs using optimized GraphQL approach
-        prs = self.get_pull_requests_optimized(weeks_back, start_date, end_date, period_name)
+        prs, failed_pr_count = self.get_pull_requests_optimized(weeks_back, start_date, end_date, period_name)
 
         if not prs:
             print(f"No pull requests found in the {period_name} time period.")
-            return {}
+            return {
+                'failed_prs': failed_pr_count,
+                'successfully_processed_prs': 0
+            }
 
         total_prs = len(prs)
         merged_prs = 0
@@ -833,7 +866,9 @@ class OptimizedGitHubMetricsCalculator:
             'average_time_to_first_comment_hours': round(avg_time_to_first_comment, 2),
             'average_time_from_first_comment_to_followup_commit_hours': round(avg_time_from_first_comment_to_followup, 2),
             'unique_contributors_count': len(unique_contributors),
-            'pr_details': pr_details  # NEW: Include detailed PR data
+            'pr_details': pr_details,  # NEW: Include detailed PR data
+            'failed_prs': failed_pr_count,  # NEW: Track failed PRs
+            'successfully_processed_prs': total_prs  # NEW: Track successfully processed PRs
         }
 
         if manual_metrics:
@@ -922,6 +957,8 @@ def _display_period_metrics(metrics: Dict, period: str) -> None:
         ('analysis_start_date', 'analysis_end_date', 'Date Range', lambda s, e: f"{s} to {e}"),
         ('total_prs', None, 'Total Pull Requests Created', lambda v, _: str(v)),
         ('merged_prs', None, 'Total Pull Requests Merged', lambda v, _: str(v)),
+        ('successfully_processed_prs', None, 'Successfully Processed PRs', lambda v, _: str(v)),
+        ('failed_prs', None, 'Failed to Process PRs', lambda v, _: str(v)),
         ('prs_created_per_week', None, 'Pull Requests Created per Week', lambda v, _: str(v)),
         ('prs_merged_per_week', None, 'Pull Requests Merged per Week', lambda v, _: str(v)),
         ('average_comments_per_pr', None, 'Average Comments per PR', lambda v, _: str(v)),
@@ -1002,8 +1039,8 @@ def get_pr_csv_columns() -> List[str]:
 def get_summary_csv_columns() -> List[str]:
     """Get the ordered list of CSV column names for summary metrics."""
     return [
-        "period", "total_prs", "merged_prs", "weeks_analyzed",
-        "analysis_start_date", "analysis_end_date",
+        "period", "total_prs", "merged_prs", "successfully_processed_prs", "failed_prs",
+        "weeks_analyzed", "analysis_start_date", "analysis_end_date",
         "prs_created_per_week", "prs_merged_per_week",
         "average_comments_per_pr", "average_time_to_merge_hours",
         "average_time_to_merge_days", "average_time_to_first_comment_hours",
@@ -1366,6 +1403,11 @@ def process_single_repository(repo_name: str, github_token: str, weeks_back: int
             # Display data export summary
             before_pr_count = len(before_prs)
             after_pr_count = len(after_prs)
+            before_failed = metrics.get('beforeAuto_failed_prs', 0)
+            after_failed = metrics.get('afterAuto_failed_prs', 0)
+            before_success = metrics.get('beforeAuto_successfully_processed_prs', 0)
+            after_success = metrics.get('afterAuto_successfully_processed_prs', 0)
+
             print(f"\n" + "="*70)
             print("CSV OUTPUT SUMMARY")
             print("="*70)
@@ -1378,8 +1420,13 @@ def process_single_repository(repo_name: str, github_token: str, weeks_back: int
                 print(f"✓ After automation PR details CSV: {after_pr_file}")
             print(f"\nData Summary:")
             print(f"- Before automation PRs exported: {before_pr_count}")
+            print(f"  - Successfully processed: {before_success}")
+            print(f"  - Failed to process: {before_failed}")
             print(f"- After automation PRs exported: {after_pr_count}")
+            print(f"  - Successfully processed: {after_success}")
+            print(f"  - Failed to process: {after_failed}")
             print(f"- Total PRs with detailed data: {before_pr_count + after_pr_count}")
+            print(f"- Total failed PRs: {before_failed + after_failed}")
             print(f"- Contributors with email mapping: {len(contributor_mapping) if contributor_mapping else 0}")
             print("="*70)
         else:
