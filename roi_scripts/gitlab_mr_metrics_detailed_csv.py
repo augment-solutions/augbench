@@ -161,7 +161,7 @@ class ProgressTracker:
         now = time.time()
         if now - self.last_update >= 1:  # Update every second
             elapsed = now - self.start_time
-            if self.current > 0:
+            if self.current > 0 and elapsed > 0:
                 rate = self.current / elapsed
                 remaining = (self.total - self.current) / rate if rate > 0 else 0
                 print(f"{self.description}: {self.current}/{self.total} ({self.current*100//self.total}%) - ETA: {remaining:.0f}s")
