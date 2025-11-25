@@ -285,8 +285,13 @@ class OptimizedBitbucketMetricsCalculator:
             end_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
         )
 
-    def get_pull_requests(self, start_date: str, end_date: str, period_name: str = "") -> List[Dict]:
-        """Get pull requests for the specified date range"""
+    def get_pull_requests(self, start_date: str, end_date: str, period_name: str = "") -> Tuple[List[Dict], int]:
+        """
+        Get pull requests for the specified date range.
+
+        Returns:
+            Tuple of (list of PR dictionaries, count of failed PRs)
+        """
         url = f"{API_BASE_URL}/repositories/{self.repo}/pullrequests"
         params = {
             'state': 'MERGED,DECLINED,OPEN',
@@ -297,7 +302,13 @@ class OptimizedBitbucketMetricsCalculator:
             print(f"Fetching PRs for {period_name} period ({start_date} to {end_date})...")
             print(f"Using parallel processing for improved performance")
 
-        all_prs = self._get_all_pages(url, params, show_progress=bool(period_name), context=period_name)
+        failed_pr_count = 0
+
+        try:
+            all_prs = self._get_all_pages(url, params, show_progress=bool(period_name), context=period_name)
+        except Exception as e:
+            print(f"  Error fetching PRs: {e}")
+            return [], 0
 
         # Filter by date range and branch
         filtered_prs = []
@@ -305,29 +316,37 @@ class OptimizedBitbucketMetricsCalculator:
         end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
 
         for pr in all_prs:
-            created_at = datetime.fromisoformat(pr['created_on'].replace('Z', '+00:00'))
+            try:
+                created_at = datetime.fromisoformat(pr['created_on'].replace('Z', '+00:00'))
 
-            # Early termination: if PRs are sorted by creation date descending,
-            # we can stop when we encounter a PR older than our start date
-            if created_at < start_dt:
-                break
+                # Early termination: if PRs are sorted by creation date descending,
+                # we can stop when we encounter a PR older than our start date
+                if created_at < start_dt:
+                    break
 
-            # Check date range
-            if not (start_dt <= created_at <= end_dt):
-                continue
-
-            # Check branch filter
-            if self.branch:
-                destination_branch = pr.get('destination', {}).get('branch', {}).get('name', '')
-                if destination_branch != self.branch:
+                # Check date range
+                if not (start_dt <= created_at <= end_dt):
                     continue
 
-            filtered_prs.append(pr)
+                # Check branch filter
+                if self.branch:
+                    destination_branch = pr.get('destination', {}).get('branch', {}).get('name', '')
+                    if destination_branch != self.branch:
+                        continue
+
+                filtered_prs.append(pr)
+            except Exception as e:
+                pr_id = pr.get('id', 'unknown') if pr else 'unknown'
+                print(f"  Warning: Failed to process PR #{pr_id}: {e}")
+                failed_pr_count += 1
+                continue
 
         if period_name:
             print(f"Found {len(filtered_prs)} PRs for {period_name}")
+            if failed_pr_count > 0:
+                print(f"Failed to process {failed_pr_count} PRs due to errors")
 
-        return filtered_prs
+        return filtered_prs, failed_pr_count
 
     def get_pr_comments(self, pr_id: int) -> List[Dict]:
         """Get comments for a specific pull request"""
@@ -343,15 +362,22 @@ class OptimizedBitbucketMetricsCalculator:
 
     def calculate_metrics_for_period(self, weeks_back: int, start_date: str, end_date: str,
                                     period_name: str, manual_metrics: Dict[str, float] = None) -> Dict[str, Any]:
-        """Calculate metrics for a specific time period using parallel processing"""
+        """
+        Calculate metrics for a specific time period using parallel processing.
+
+        Returns enhanced metrics including failure tracking.
+        """
         print(f"\nCalculating {period_name} metrics for {self.repo} over {weeks_back} week(s)...")
         print(f"Date range: {start_date} to {end_date}")
 
-        prs = self.get_pull_requests(start_date, end_date, period_name)
+        prs, failed_pr_count = self.get_pull_requests(start_date, end_date, period_name)
 
         if not prs:
             print(f"No pull requests found in the {period_name} time period.")
-            return {}
+            return {
+                'failed_prs': failed_pr_count,
+                'successfully_processed_prs': 0
+            }
 
         total_prs = len(prs)
         merged_prs = 0
@@ -447,7 +473,9 @@ class OptimizedBitbucketMetricsCalculator:
             'average_time_to_merge_days': round(avg_time_to_merge_hours / 24.0, 2),
             'average_time_to_first_comment_hours': round(avg_time_to_first_comment, 2),
             'average_time_from_first_comment_to_followup_commit_hours': 0.0,  # Not calculated in optimized version
-            'unique_contributors_count': len(unique_contributors)
+            'unique_contributors_count': len(unique_contributors),
+            'failed_prs': failed_pr_count,
+            'successfully_processed_prs': total_prs
         }
 
         if manual_metrics:
@@ -552,6 +580,23 @@ def main():
             print(f"Analysis Period: {WEEKS_BACK} week(s) for each comparison period")
             print(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             print(f"Execution Time: {execution_time:.1f} seconds")
+            print("="*70)
+
+            # Display error handling summary
+            before_failed = metrics.get('beforeAuto_failed_prs', 0)
+            after_failed = metrics.get('afterAuto_failed_prs', 0)
+            before_success = metrics.get('beforeAuto_successfully_processed_prs', 0)
+            after_success = metrics.get('afterAuto_successfully_processed_prs', 0)
+
+            print("\nPR PROCESSING SUMMARY:")
+            print("-" * 40)
+            print(f"Before automation:")
+            print(f"  - Successfully processed: {before_success} PRs")
+            print(f"  - Failed to process: {before_failed} PRs")
+            print(f"After automation:")
+            print(f"  - Successfully processed: {after_success} PRs")
+            print(f"  - Failed to process: {after_failed} PRs")
+            print(f"Total failed PRs: {before_failed + after_failed}")
             print("="*70)
 
             _display_period_metrics(metrics, 'beforeAuto')

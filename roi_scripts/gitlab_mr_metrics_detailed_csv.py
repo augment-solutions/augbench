@@ -366,8 +366,13 @@ class GitLabMRAnalyzer:
 
         return mrs, end_cursor, has_next_page
     
-    def get_merge_requests(self, start_date: str, end_date: str, period_name: str = "") -> List[MRData]:
-        """Get all MRs for the specified date range using GraphQL batch fetching"""
+    def get_merge_requests(self, start_date: str, end_date: str, period_name: str = "") -> Tuple[List[MRData], int]:
+        """
+        Get all MRs for the specified date range using GraphQL batch fetching.
+
+        Returns:
+            Tuple of (list of MRData objects, count of failed MRs)
+        """
         if period_name:
             print(f"Fetching MRs for {period_name} period ({start_date} to {end_date})...")
             print(f"Using GraphQL API for batch fetching and parallel processing")
@@ -375,21 +380,42 @@ class GitLabMRAnalyzer:
         all_mrs = []
         after_cursor = None
         batch_num = 1
+        failed_mr_count = 0
 
         while True:
             if period_name:
                 print(f"  Fetching batch {batch_num}...")
 
-            mrs, end_cursor, has_next = self.fetch_mrs_batch_graphql(start_date, end_date, after_cursor)
-            all_mrs.extend(mrs)
+            try:
+                mrs, end_cursor, has_next = self.fetch_mrs_batch_graphql(start_date, end_date, after_cursor)
 
-            if not has_next or not end_cursor:
+                # Process each MR with error handling
+                for mr in mrs:
+                    try:
+                        all_mrs.append(mr)
+                    except Exception as e:
+                        mr_iid = mr.iid if hasattr(mr, 'iid') else 'unknown'
+                        print(f"  Warning: Failed to process MR !{mr_iid}: {e}")
+                        failed_mr_count += 1
+                        continue
+
+                if not has_next or not end_cursor:
+                    break
+
+                after_cursor = end_cursor
+                batch_num += 1
+
+            except Exception as e:
+                print(f"  Error fetching batch {batch_num}: {e}")
+                print(f"  Continuing with remaining batches...")
+                if after_cursor:
+                    print(f"  Cannot safely determine next batch. Stopping batch fetch.")
                 break
-            
-            after_cursor = end_cursor
-            batch_num += 1
 
-        return all_mrs
+        if period_name and failed_mr_count > 0:
+            print(f"Failed to process {failed_mr_count} MRs due to errors")
+
+        return all_mrs, failed_mr_count
 
 def parse_project_ids(project_string: str) -> List[str]:
     """Parse project IDs from semicolon-separated string."""
@@ -643,20 +669,24 @@ def process_single_project(project_id: str, gitlab_token: str, weeks_back: int,
     analyzer = GitLabMRAnalyzer(project_id, gitlab_token, branch)
     
     # Fetch MRs for both periods
-    before_mrs = analyzer.get_merge_requests(
+    before_mrs, before_failed = analyzer.get_merge_requests(
         before_start.isoformat(),
         before_end.isoformat(),
         "before automation"
     )
-    
-    after_mrs = analyzer.get_merge_requests(
+
+    after_mrs, after_failed = analyzer.get_merge_requests(
         after_start.isoformat(),
         after_end.isoformat(),
         "after automation"
     )
-    
+
     print(f"\n✓ Fetched {len(before_mrs)} MRs before automation")
+    if before_failed > 0:
+        print(f"  - Failed to process: {before_failed} MRs")
     print(f"✓ Fetched {len(after_mrs)} MRs after automation")
+    if after_failed > 0:
+        print(f"  - Failed to process: {after_failed} MRs")
     
     # Generate CSV files
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -684,19 +714,45 @@ def process_single_project(project_id: str, gitlab_token: str, weeks_back: int,
     summary_metrics = {
         "beforeAuto_total_mrs": len(before_mrs),
         "beforeAuto_merged_mrs": len([m for m in before_mrs if m.merged_at]),
+        "beforeAuto_successfully_processed_mrs": len(before_mrs),
+        "beforeAuto_failed_mrs": before_failed,
         "afterAuto_total_mrs": len(after_mrs),
         "afterAuto_merged_mrs": len([m for m in after_mrs if m.merged_at]),
+        "afterAuto_successfully_processed_mrs": len(after_mrs),
+        "afterAuto_failed_mrs": after_failed,
     }
     write_summary_csv(summary_file, summary_metrics)
     csv_files.append(summary_file)
-    
+
     # Write contributor mapping CSV
     contributor_file = f"gitlab_contributors_mapping_{project_safe_name}_{timestamp}.csv"
-    contributor_mapping = [{"gitlab_username": username, "emails": list(emails)} 
+    contributor_mapping = [{"gitlab_username": username, "emails": list(emails)}
                           for username, emails in analyzer.contributor_emails.items()]
     write_contributor_csv(contributor_file, contributor_mapping)
     csv_files.append(contributor_file)
-    
+
+    # Display summary
+    print(f"\n{'='*70}")
+    print("CSV OUTPUT SUMMARY")
+    print(f"{'='*70}")
+    print(f"✓ Summary metrics CSV: {summary_file}")
+    print(f"✓ Contributor mapping CSV: {contributor_file}")
+    if before_mrs_dicts:
+        print(f"✓ Before automation MR details CSV: {before_file}")
+    if after_mrs_dicts:
+        print(f"✓ After automation MR details CSV: {after_file}")
+    print(f"\nData Summary:")
+    print(f"- Before automation MRs exported: {len(before_mrs)}")
+    print(f"  - Successfully processed: {len(before_mrs)}")
+    print(f"  - Failed to process: {before_failed}")
+    print(f"- After automation MRs exported: {len(after_mrs)}")
+    print(f"  - Successfully processed: {len(after_mrs)}")
+    print(f"  - Failed to process: {after_failed}")
+    print(f"- Total MRs with detailed data: {len(before_mrs) + len(after_mrs)}")
+    print(f"- Total failed MRs: {before_failed + after_failed}")
+    print(f"- Contributors with email mapping: {len(contributor_mapping)}")
+    print(f"{'='*70}")
+
     return csv_files
 
 def main():
