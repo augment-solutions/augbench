@@ -156,11 +156,11 @@ class ProgressTracker:
         """Update progress"""
         self.current += increment
         current_time = time.time()
-        
+
         # Update display every second or at completion
         if current_time - self.last_update >= 1.0 or self.current >= self.total:
             elapsed = current_time - self.start_time
-            if self.current > 0:
+            if self.current > 0 and elapsed > 0:
                 rate = self.current / elapsed
                 remaining = (self.total - self.current) / rate if rate > 0 else 0
                 eta_str = f"ETA: {int(remaining)}s" if remaining > 0 else "Done"

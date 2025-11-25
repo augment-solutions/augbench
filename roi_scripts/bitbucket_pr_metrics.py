@@ -119,7 +119,7 @@ class ProgressTracker:
     
     def _display(self):
         elapsed = time.time() - self.start_time
-        if self.current > 0:
+        if self.current > 0 and elapsed > 0:
             rate = self.current / elapsed
             remaining = (self.total - self.current) / rate if rate > 0 else 0
             eta_str = f"ETA: {int(remaining)}s" if remaining > 0 else "Done"
