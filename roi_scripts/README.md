@@ -32,12 +32,36 @@ For each period (beforeAuto, afterAuto):
 - Python 3.8+
 - `pip install requests`
 - Access token with read permissions to your repo/project
-- **GitHub**: Personal Access Token with `repo` scope
+- **GitHub**: Personal Access Token (see [GitHub Token Setup](#github-token-setup) below)
 - **Azure DevOps**: Personal Access Token with Code (read) permissions
 - **GitLab**: Personal Access Token with `api` or `read_api` scope
 - **Bitbucket**: App Password with `Repositories: Read` permission
 
 Tip: You can run end-to-end in 2–3 minutes. Just set your token, project/repo, and automation date.
+
+### GitHub Token Setup
+
+To generate a GitHub Personal Access Token:
+
+**Option 1: Fine-grained token** (recommended)
+1. Go to **GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens**
+2. Click **Generate new token**
+3. Select the repository (or repositories) you want to analyze
+4. Under **Repository permissions**, enable the following:
+   - **Metadata** → Read-only (automatically selected)
+   - **Contents** → Read-only
+   - **Pull requests** → Read-only
+5. Click **Generate token** and copy it
+
+**Option 2: Classic token**
+1. Go to **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)**
+2. Click **Generate new token**
+3. Select the **`repo`** scope
+4. Click **Generate token** and copy it
+
+**Important:** If your repository is in a GitHub **organization**, make sure you have the corresponding admin approval before using the token:
+- **Fine-grained tokens**: The org admin must approve your token request under **Organization Settings → Personal access tokens → Pending requests**. The org must also allow fine-grained token access.
+- **Classic tokens**: You must authorize the token for SSO if the organization uses SAML SSO. Click **Configure SSO** next to your token and authorize it for the organization.
 
 ---
 
