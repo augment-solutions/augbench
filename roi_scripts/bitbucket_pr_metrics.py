@@ -76,17 +76,36 @@ WEEKS_BACK = int(os.environ.get('WEEKS_BACK', '2'))
 AUTOMATED_DATE = os.environ.get('AUTOMATED_DATE', '')
 BRANCH = os.environ.get('BRANCH', '')
 
-# Bitbucket API configuration — read raw values for priority resolution
-_api_base_url_raw = os.environ.get('API_BASE_URL', '')
+# Bitbucket host / API configuration
 BITBUCKET_HOST = os.environ.get('BITBUCKET_HOST', '')
+_api_base_url_override = os.environ.get('API_BASE_URL', '')
 
-# Resolve: API_BASE_URL takes priority, then BITBUCKET_HOST, then Cloud default
-if _api_base_url_raw:
-    API_BASE_URL = _api_base_url_raw
-elif BITBUCKET_HOST:
-    API_BASE_URL = BITBUCKET_HOST.rstrip('/')
-else:
-    API_BASE_URL = 'https://api.bitbucket.org/2.0'
+
+def resolve_bitbucket_urls(host: str) -> Tuple[str, str]:
+    """
+    Return (api_base_url, web_base_url) based on the provided host.
+
+    - Empty host  → Cloud defaults:
+        api_base_url = 'https://api.bitbucket.org/2.0'
+        web_base_url = 'https://bitbucket.org'
+    - Non-empty   → Bitbucket Server/Data Center:
+        Normalizes host (adds https:// if no scheme, strips trailing slash)
+        api_base_url = '{host}/rest/api/1.0'
+        web_base_url = '{host}'
+    """
+    if not host:
+        return ('https://api.bitbucket.org/2.0', 'https://bitbucket.org')
+    if '://' not in host:
+        host = 'https://' + host
+    host = host.rstrip('/')
+    return (f'{host}/rest/api/1.0', host)
+
+
+# Resolve API and web base URLs
+# Priority: API_BASE_URL env var > BITBUCKET_HOST > Cloud default
+_resolved_api_url, _resolved_web_url = resolve_bitbucket_urls(BITBUCKET_HOST)
+API_BASE_URL = _api_base_url_override if _api_base_url_override else _resolved_api_url
+WEB_BASE_URL = _resolved_web_url
 
 # Performance tuning parameters
 MAX_PARALLEL_REQUESTS = 10  # Concurrent API requests
@@ -276,17 +295,15 @@ def prompt_for_config() -> Optional[Dict[str, Any]]:
 
     # Bitbucket Host (optional, for self-hosted instances)
     bitbucket_host = input(
-        "Bitbucket Host (optional, for self-hosted instances e.g. https://bitbucket.example.com): "
+        "Bitbucket Host (optional, for self-hosted instances, "
+        "e.g. bitbucket.example.com or https://bitbucket.example.com): "
     ).strip()
     config['bitbucket_host'] = bitbucket_host
 
-    # API base URL
-    if bitbucket_host:
-        default_url = bitbucket_host.rstrip('/')
-    else:
-        default_url = API_BASE_URL
-    api_url = input(f"API Base URL [default: {default_url}]: ").strip()
-    config['api_base_url'] = api_url if api_url else default_url
+    # API base URL — resolve from host, allow override
+    resolved_api, _ = resolve_bitbucket_urls(bitbucket_host)
+    api_url = input(f"API Base URL [default: {resolved_api}]: ").strip()
+    config['api_base_url'] = api_url if api_url else resolved_api
 
     return config
 
@@ -854,7 +871,7 @@ class OptimizedBitbucketMetricsCalculator:
 def main():
     """Main function to run the optimized metrics calculator"""
     global BITBUCKET_USERNAME, BITBUCKET_APP_PASSWORD, REPO_NAME, WEEKS_BACK, AUTOMATED_DATE, BRANCH, API_BASE_URL
-    global BITBUCKET_API_TOKEN, BITBUCKET_EMAIL, BITBUCKET_HOST
+    global BITBUCKET_API_TOKEN, BITBUCKET_EMAIL, BITBUCKET_HOST, WEB_BASE_URL
 
     # Validate configuration
     is_valid, errors, warnings, config = validate_config()
@@ -882,6 +899,7 @@ def main():
             BRANCH = new_config['branch']
             BITBUCKET_HOST = new_config.get('bitbucket_host', '')
             API_BASE_URL = new_config['api_base_url']
+            _, WEB_BASE_URL = resolve_bitbucket_urls(BITBUCKET_HOST)
 
             is_valid, errors, warnings, config = validate_config()
             if not is_valid:
