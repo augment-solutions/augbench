@@ -1410,6 +1410,32 @@ def process_single_repository(repo_name: str, azure_org: str, project: str, pat:
             write_contributor_csv(contributor_file, contributor_emails)
             generated_files.append(contributor_file)
 
+        # Display processing summary
+        before_failed = before_metrics.get('failed_prs', 0)
+        after_failed = after_metrics.get('failed_prs', 0)
+        before_success = before_metrics.get('successfully_processed_prs', 0)
+        after_success = after_metrics.get('successfully_processed_prs', 0)
+
+        print(f"\n{'='*70}")
+        print("CSV OUTPUT SUMMARY")
+        print(f"{'='*70}")
+        print(f"✓ Summary metrics CSV: {summary_file}")
+        if all_pr_details:
+            print(f"✓ PR details CSV: {pr_file}")
+        if contributor_emails:
+            print(f"✓ Contributor mapping CSV: {contributor_file}")
+        print(f"\nData Summary:")
+        print(f"- Before automation PRs:")
+        print(f"  - Successfully processed: {before_success}")
+        print(f"  - Failed to process: {before_failed}")
+        print(f"- After automation PRs:")
+        print(f"  - Successfully processed: {after_success}")
+        print(f"  - Failed to process: {after_failed}")
+        print(f"- Total PRs with detailed data: {len(all_pr_details)}")
+        print(f"- Total failed PRs: {before_failed + after_failed}")
+        print(f"- Contributors with email mapping: {len(contributor_emails) if contributor_emails else 0}")
+        print(f"{'='*70}")
+
         print(f"\n✓ Repository processing complete: {len(generated_files)} files generated")
 
     except Exception as e:
