@@ -44,6 +44,10 @@ Usage:
 
 Configuration is identical to the original script.
 Output JSON format is 100% compatible with the original.
+
+For self-hosted Bitbucket Server instances, set BITBUCKET_HOST:
+  export BITBUCKET_HOST=https://bitbucket.example.com
+API_BASE_URL priority: API_BASE_URL env var > BITBUCKET_HOST > Cloud default (https://api.bitbucket.org/2.0)
 """
 
 import requests
@@ -72,8 +76,17 @@ WEEKS_BACK = int(os.environ.get('WEEKS_BACK', '2'))
 AUTOMATED_DATE = os.environ.get('AUTOMATED_DATE', '')
 BRANCH = os.environ.get('BRANCH', '')
 
-# Bitbucket API configuration
-API_BASE_URL = os.environ.get('API_BASE_URL', 'https://api.bitbucket.org/2.0')
+# Bitbucket API configuration — read raw values for priority resolution
+_api_base_url_raw = os.environ.get('API_BASE_URL', '')
+BITBUCKET_HOST = os.environ.get('BITBUCKET_HOST', '')
+
+# Resolve: API_BASE_URL takes priority, then BITBUCKET_HOST, then Cloud default
+if _api_base_url_raw:
+    API_BASE_URL = _api_base_url_raw
+elif BITBUCKET_HOST:
+    API_BASE_URL = BITBUCKET_HOST.rstrip('/')
+else:
+    API_BASE_URL = 'https://api.bitbucket.org/2.0'
 
 # Performance tuning parameters
 MAX_PARALLEL_REQUESTS = 10  # Concurrent API requests
@@ -115,6 +128,7 @@ def validate_config() -> Tuple[bool, List[str], List[str], Dict[str, Any]]:
         'weeks_back': WEEKS_BACK,
         'automated_date': AUTOMATED_DATE,
         'branch': BRANCH,
+        'bitbucket_host': BITBUCKET_HOST,
         'api_base_url': API_BASE_URL,
     }
 
@@ -160,6 +174,12 @@ def validate_config() -> Tuple[bool, List[str], List[str], Dict[str, Any]]:
                 datetime.fromisoformat(AUTOMATED_DATE.replace('Z', '+00:00'))
             except ValueError:
                 errors.append("AUTOMATED_DATE must be in ISO 8601 format: 'YYYY-MM-DDTHH:MM:SSZ'")
+
+    if BITBUCKET_HOST and os.environ.get('API_BASE_URL', ''):
+        warnings.append(
+            "Both BITBUCKET_HOST and API_BASE_URL are set. "
+            "API_BASE_URL takes priority over BITBUCKET_HOST."
+        )
 
     return len(errors) == 0, errors, warnings, config
 
@@ -254,9 +274,19 @@ def prompt_for_config() -> Optional[Dict[str, Any]]:
     branch = input("Target branch (empty for all branches): ").strip()
     config['branch'] = branch
 
+    # Bitbucket Host (optional, for self-hosted instances)
+    bitbucket_host = input(
+        "Bitbucket Host (optional, for self-hosted instances e.g. https://bitbucket.example.com): "
+    ).strip()
+    config['bitbucket_host'] = bitbucket_host
+
     # API base URL
-    api_url = input(f"API Base URL [default: {API_BASE_URL}]: ").strip()
-    config['api_base_url'] = api_url if api_url else API_BASE_URL
+    if bitbucket_host:
+        default_url = bitbucket_host.rstrip('/')
+    else:
+        default_url = API_BASE_URL
+    api_url = input(f"API Base URL [default: {default_url}]: ").strip()
+    config['api_base_url'] = api_url if api_url else default_url
 
     return config
 
@@ -824,7 +854,7 @@ class OptimizedBitbucketMetricsCalculator:
 def main():
     """Main function to run the optimized metrics calculator"""
     global BITBUCKET_USERNAME, BITBUCKET_APP_PASSWORD, REPO_NAME, WEEKS_BACK, AUTOMATED_DATE, BRANCH, API_BASE_URL
-    global BITBUCKET_API_TOKEN, BITBUCKET_EMAIL
+    global BITBUCKET_API_TOKEN, BITBUCKET_EMAIL, BITBUCKET_HOST
 
     # Validate configuration
     is_valid, errors, warnings, config = validate_config()
@@ -850,6 +880,7 @@ def main():
             WEEKS_BACK = new_config['weeks_back']
             AUTOMATED_DATE = new_config['automated_date']
             BRANCH = new_config['branch']
+            BITBUCKET_HOST = new_config.get('bitbucket_host', '')
             API_BASE_URL = new_config['api_base_url']
 
             is_valid, errors, warnings, config = validate_config()
@@ -870,6 +901,7 @@ def main():
     # Resolve and display authentication method
     auth_user, auth_pass, auth_label = resolve_credentials()
     print(f"\nAuthentication: {auth_label}")
+    print(f"API Base URL: {API_BASE_URL}")
 
     # Initialize optimized calculator with resolved credentials
     calculator = OptimizedBitbucketMetricsCalculator(auth_user, auth_pass, REPO_NAME, BRANCH)
