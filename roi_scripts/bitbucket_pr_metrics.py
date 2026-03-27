@@ -20,11 +20,27 @@ Expected Performance (1000 PRs):
 - Original: ~2-3 hours, ~2,000 API calls
 - Optimized: ~40-60 minutes, ~2,000 API calls (concurrent)
 
-Usage: Same as original script - 100% backward compatible
-1. Set BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD
-2. Set REPO_NAME (format: 'workspace/repo-name')
-3. Optionally set BRANCH, AUTOMATED_DATE, WEEKS_BACK
-4. Run: python bitbucket_pr_metrics_optimized.py
+Authentication (two options — API Token recommended):
+  Option A — API Token (recommended, replaces deprecated app passwords):
+    Set BITBUCKET_API_TOKEN and BITBUCKET_EMAIL environment variables.
+    Bitbucket app passwords are deprecated and will stop working June 9, 2026.
+
+  Option B — App Password (legacy, deprecated):
+    Set BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD environment variables.
+    Will show a deprecation warning.
+
+Usage:
+  Option A (recommended):
+    export BITBUCKET_API_TOKEN=<your-api-token>
+    export BITBUCKET_EMAIL=<your-email@example.com>
+    export REPO_NAME='workspace/repo-name'
+    python3 bitbucket_pr_metrics.py
+
+  Option B (legacy):
+    export BITBUCKET_USERNAME=<your-username>
+    export BITBUCKET_APP_PASSWORD=<your-app-password>
+    export REPO_NAME='workspace/repo-name'
+    python3 bitbucket_pr_metrics.py
 
 Configuration is identical to the original script.
 Output JSON format is 100% compatible with the original.
@@ -48,6 +64,9 @@ import time
 # Configuration - Same as original script
 BITBUCKET_USERNAME = os.environ.get('BITBUCKET_USERNAME', '')
 BITBUCKET_APP_PASSWORD = os.environ.get('BITBUCKET_APP_PASSWORD', '')
+# New API token auth (recommended — app passwords deprecated June 9, 2026)
+BITBUCKET_API_TOKEN = os.environ.get('BITBUCKET_API_TOKEN', '')
+BITBUCKET_EMAIL = os.environ.get('BITBUCKET_EMAIL', '')
 REPO_NAME = os.environ.get('REPO_NAME', '')
 WEEKS_BACK = int(os.environ.get('WEEKS_BACK', '2'))
 AUTOMATED_DATE = os.environ.get('AUTOMATED_DATE', '')
@@ -62,14 +81,291 @@ CACHE_ENABLED = True  # Enable response caching
 RATE_LIMIT_BUFFER = 50  # Safety buffer for rate limits
 PROGRESS_INTERVAL = 10  # Show progress every N PRs
 
-# Import helper functions from original script
-from bitbucket_pr_metrics import (
-    prompt_for_manual_metrics,
-    validate_config,
-    prompt_for_config,
-    _display_period_metrics,
-    _calculate_and_display_changes
-)
+
+# ============================================================================
+# CREDENTIAL RESOLUTION
+# ============================================================================
+
+def resolve_credentials() -> Tuple[str, str, str]:
+    """
+    Resolve Bitbucket credentials with API token taking priority over app password.
+
+    Returns:
+        (auth_user, auth_pass, method_label)
+    """
+    if BITBUCKET_API_TOKEN:
+        return (BITBUCKET_EMAIL, BITBUCKET_API_TOKEN, f"API Token ({BITBUCKET_EMAIL})")
+    return (BITBUCKET_USERNAME, BITBUCKET_APP_PASSWORD, f"App Password ({BITBUCKET_USERNAME}) [DEPRECATED]")
+
+
+# ============================================================================
+# CONFIG VALIDATION AND PROMPTS
+# ============================================================================
+
+def validate_config() -> Tuple[bool, List[str], Dict[str, Any]]:
+    """Validate configuration and return (is_valid, errors, config_dict)"""
+    errors = []
+    config = {
+        'bitbucket_username': BITBUCKET_USERNAME,
+        'bitbucket_app_password': BITBUCKET_APP_PASSWORD,
+        'bitbucket_api_token': BITBUCKET_API_TOKEN,
+        'bitbucket_email': BITBUCKET_EMAIL,
+        'repo_name': REPO_NAME,
+        'weeks_back': WEEKS_BACK,
+        'automated_date': AUTOMATED_DATE,
+        'branch': BRANCH,
+        'api_base_url': API_BASE_URL,
+    }
+
+    # Validate credentials
+    if BITBUCKET_API_TOKEN:
+        if not BITBUCKET_EMAIL:
+            errors.append("BITBUCKET_EMAIL is required when BITBUCKET_API_TOKEN is set")
+    elif BITBUCKET_APP_PASSWORD:
+        if not BITBUCKET_USERNAME:
+            errors.append("BITBUCKET_USERNAME is required when using BITBUCKET_APP_PASSWORD")
+    else:
+        errors.append(
+            "No Bitbucket credentials found. Set BITBUCKET_API_TOKEN + BITBUCKET_EMAIL "
+            "(recommended) or BITBUCKET_USERNAME + BITBUCKET_APP_PASSWORD (deprecated)."
+        )
+
+    # Validate repository name
+    if not REPO_NAME or REPO_NAME in ['workspace/repo-name', '']:
+        errors.append("Repository name is required in format 'workspace/repo-name'")
+    elif '/' not in REPO_NAME:
+        errors.append("Repository name must be in format 'workspace/repo-name'")
+
+    # Validate weeks back
+    try:
+        weeks = int(WEEKS_BACK)
+        if weeks <= 0:
+            errors.append("WEEKS_BACK must be a positive integer")
+    except (ValueError, TypeError):
+        errors.append("WEEKS_BACK must be a positive integer")
+
+    # Validate automated date format
+    if AUTOMATED_DATE:
+        if not AUTOMATED_DATE.endswith('Z'):
+            errors.append("AUTOMATED_DATE must end with 'Z' (e.g., '2024-01-15T10:30:00Z')")
+        else:
+            try:
+                datetime.fromisoformat(AUTOMATED_DATE.replace('Z', '+00:00'))
+            except ValueError:
+                errors.append("AUTOMATED_DATE must be in ISO 8601 format: 'YYYY-MM-DDTHH:MM:SSZ'")
+
+    return len(errors) == 0, errors, config
+
+
+def prompt_for_config() -> Optional[Dict[str, Any]]:
+    """Prompt user for configuration values interactively"""
+    print("\n" + "="*70)
+    print("INTERACTIVE CONFIGURATION")
+    print("="*70)
+
+    # Auth method selection
+    print("\nAuthentication method:")
+    print("  1. API Token (recommended — app passwords deprecated June 9, 2026)")
+    print("  2. App Password (legacy/deprecated)")
+    auth_choice = input("Enter 1 or 2 [default: 1]: ").strip()
+
+    config: Dict[str, Any] = {}
+
+    if auth_choice == '2':
+        # Legacy app password
+        while True:
+            username = input("Bitbucket Username: ").strip()
+            if username:
+                break
+            print("ERROR: Bitbucket username is required.")
+        config['bitbucket_username'] = username
+        config['bitbucket_email'] = ''
+
+        app_password = getpass.getpass("Bitbucket App Password: ").strip()
+        while not app_password:
+            print("ERROR: Bitbucket app password is required.")
+            app_password = getpass.getpass("Bitbucket App Password: ").strip()
+        config['bitbucket_app_password'] = app_password
+        config['bitbucket_api_token'] = ''
+    else:
+        # API Token (default)
+        while True:
+            email = input("Bitbucket Email: ").strip()
+            if email:
+                break
+            print("ERROR: Bitbucket email is required.")
+        config['bitbucket_email'] = email
+        config['bitbucket_username'] = ''
+
+        api_token = getpass.getpass("Bitbucket API Token: ").strip()
+        while not api_token:
+            print("ERROR: Bitbucket API token is required.")
+            api_token = getpass.getpass("Bitbucket API Token: ").strip()
+        config['bitbucket_api_token'] = api_token
+        config['bitbucket_app_password'] = ''
+
+    # Repository name
+    while True:
+        repo_name = input("Repository name (workspace/repo-name): ").strip()
+        if repo_name and '/' in repo_name:
+            break
+        print("ERROR: Repository name is required in format 'workspace/repo-name'.")
+    config['repo_name'] = repo_name
+
+    # Weeks back
+    while True:
+        try:
+            weeks_input = input(f"Weeks back for each period (default: {WEEKS_BACK}): ").strip()
+            if not weeks_input:
+                weeks_back = WEEKS_BACK
+            else:
+                weeks_back = int(weeks_input)
+                if weeks_back <= 0:
+                    print("ERROR: Weeks back must be a positive integer.")
+                    continue
+            break
+        except ValueError:
+            print("ERROR: Please enter a valid integer.")
+    config['weeks_back'] = weeks_back
+
+    # Automated date
+    while True:
+        automated_date = input("Automation date (YYYY-MM-DDTHH:MM:SSZ, or empty for current time): ").strip()
+        if not automated_date:
+            break
+        if not automated_date.endswith('Z'):
+            print("ERROR: Date must end with 'Z'. Example: '2024-01-15T10:30:00Z'")
+            continue
+        try:
+            datetime.fromisoformat(automated_date.replace('Z', '+00:00'))
+            break
+        except ValueError:
+            print("ERROR: Invalid date format. Use 'YYYY-MM-DDTHH:MM:SSZ'")
+    config['automated_date'] = automated_date
+
+    # Branch
+    branch = input("Target branch (empty for all branches): ").strip()
+    config['branch'] = branch
+
+    # API base URL
+    api_url = input(f"API Base URL [default: {API_BASE_URL}]: ").strip()
+    config['api_base_url'] = api_url if api_url else API_BASE_URL
+
+    return config
+
+
+def prompt_for_manual_metrics() -> Dict[str, float]:
+    """Prompt user for manual metrics that cannot be automatically calculated"""
+    print("\n" + "="*70)
+    print("MANUAL METRICS INPUT")
+    print("="*70)
+    print("Please provide the following metrics based on your team's experience:")
+    print()
+
+    metrics: Dict[str, float] = {}
+
+    # Average time for first review
+    while True:
+        try:
+            first_review_input = input(
+                "What is the average time taken in hours by a developer "
+                "for doing a first review of a PR? "
+            ).strip()
+            if first_review_input:
+                first_review_hours = float(first_review_input)
+                if first_review_hours >= 0:
+                    metrics['average_first_review_time_hours'] = round(first_review_hours, 2)
+                    break
+                else:
+                    print("ERROR: Time must be a non-negative number. Please try again.")
+            else:
+                print("ERROR: This field is required. Please enter a value.")
+        except ValueError:
+            print("ERROR: Please enter a valid number (e.g., 2.5 for 2.5 hours).")
+
+    # Average time for remediation
+    while True:
+        try:
+            remediation_input = input(
+                "What is the average time taken in hours by a developer to remediate "
+                "the findings from the code review when a PR is rejected? "
+            ).strip()
+            if remediation_input:
+                remediation_hours = float(remediation_input)
+                if remediation_hours >= 0:
+                    metrics['average_remediation_time_hours'] = round(remediation_hours, 2)
+                    break
+                else:
+                    print("ERROR: Time must be a non-negative number. Please try again.")
+            else:
+                print("ERROR: This field is required. Please enter a value.")
+        except ValueError:
+            print("ERROR: Please enter a valid number (e.g., 4.0 for 4 hours).")
+
+    print("\n" + "="*70)
+    print("Manual Metrics Summary:")
+    print(f"Average first review time: {metrics['average_first_review_time_hours']} hours")
+    print(f"Average remediation time: {metrics['average_remediation_time_hours']} hours")
+    print("="*70)
+
+    return metrics
+
+
+def _display_period_metrics(metrics: Dict, prefix: str) -> None:
+    """Display metrics for a specific period (beforeAuto or afterAuto)"""
+    period_name = "BEFORE AUTOMATION" if prefix == "beforeAuto" else "AFTER AUTOMATION"
+    print(f"\n{period_name} METRICS:")
+    print("-" * 40)
+
+    if f'{prefix}_analysis_start_date' not in metrics:
+        print(f"No data available for {period_name.lower()} period")
+        return
+
+    metric_data = [
+        ('analysis_start_date', 'analysis_end_date', 'Date Range', lambda s, e: f"{s} to {e}"),
+        ('total_prs', None, 'Total Pull Requests Created', lambda v, _: str(v)),
+        ('merged_prs', None, 'Total Pull Requests Merged', lambda v, _: str(v)),
+        ('prs_created_per_week', None, 'Pull Requests Created per Week', lambda v, _: str(v)),
+        ('prs_merged_per_week', None, 'Pull Requests Merged per Week', lambda v, _: str(v)),
+        ('average_comments_per_pr', None, 'Average Comments per PR', lambda v, _: str(v)),
+        ('average_time_to_merge_hours', 'average_time_to_merge_days', 'Average Time to Merge',
+         lambda h, d: f"{h} hours ({d} days)"),
+        ('average_time_to_first_comment_hours', None, 'Average Time to First Comment',
+         lambda v, _: f"{v} hours"),
+        ('average_time_from_first_comment_to_followup_commit_hours', None,
+         'Average Time from First Comment to Follow-up Commit', lambda v, _: f"{v} hours"),
+        ('unique_contributors_count', None, 'Unique Contributors', lambda v, _: str(v)),
+        ('average_first_review_time_hours', None, 'Average First Review Time (Manual)', lambda v, _: f"{v} hours"),
+        ('average_remediation_time_hours', None, 'Average Remediation Time (Manual)', lambda v, _: f"{v} hours"),
+    ]
+
+    for key1, key2, label, formatter in metric_data:
+        val1 = metrics.get(f'{prefix}_{key1}', 0)
+        val2 = metrics.get(f'{prefix}_{key2}', 0) if key2 else None
+        print(f"{label}: {formatter(val1, val2)}")
+
+
+def _calculate_and_display_changes(metrics: Dict) -> None:
+    """Calculate and display percentage changes between before and after periods"""
+    print("\nCOMPARISON SUMMARY:")
+    print("-" * 40)
+
+    changes = [
+        ('prs_created_per_week', 'PRs Created per Week Change'),
+        ('average_time_to_merge_hours', 'Average Merge Time Change'),
+        ('average_comments_per_pr', 'Average Comments per PR Change'),
+        ('average_time_to_first_comment_hours', 'Average Time to First Comment Change'),
+        ('average_time_from_first_comment_to_followup_commit_hours',
+         'Average Time from First Comment to Follow-up Commit Change'),
+        ('unique_contributors_count', 'Unique Contributors Change'),
+    ]
+
+    for metric_key, label in changes:
+        before_val = metrics.get(f'beforeAuto_{metric_key}', 0)
+        after_val = metrics.get(f'afterAuto_{metric_key}', 0)
+        if before_val > 0:
+            change = ((after_val - before_val) / before_val) * 100
+            print(f"{label}: {change:+.1f}%")
 
 @dataclass
 class PRData:
@@ -521,6 +817,7 @@ class OptimizedBitbucketMetricsCalculator:
 def main():
     """Main function to run the optimized metrics calculator"""
     global BITBUCKET_USERNAME, BITBUCKET_APP_PASSWORD, REPO_NAME, WEEKS_BACK, AUTOMATED_DATE, BRANCH, API_BASE_URL
+    global BITBUCKET_API_TOKEN, BITBUCKET_EMAIL
 
     # Validate configuration
     is_valid, errors, config = validate_config()
@@ -538,6 +835,8 @@ def main():
             if not new_config:
                 return
 
+            BITBUCKET_API_TOKEN = new_config.get('bitbucket_api_token', '')
+            BITBUCKET_EMAIL = new_config.get('bitbucket_email', '')
             BITBUCKET_USERNAME = new_config['bitbucket_username']
             BITBUCKET_APP_PASSWORD = new_config['bitbucket_app_password']
             REPO_NAME = new_config['repo_name']
@@ -555,8 +854,12 @@ def main():
         else:
             return
 
-    # Initialize optimized calculator
-    calculator = OptimizedBitbucketMetricsCalculator(BITBUCKET_USERNAME, BITBUCKET_APP_PASSWORD, REPO_NAME, BRANCH)
+    # Resolve and display authentication method
+    auth_user, auth_pass, auth_label = resolve_credentials()
+    print(f"\nAuthentication: {auth_label}")
+
+    # Initialize optimized calculator with resolved credentials
+    calculator = OptimizedBitbucketMetricsCalculator(auth_user, auth_pass, REPO_NAME, BRANCH)
 
     # Prompt for manual metrics
     manual_metrics = prompt_for_manual_metrics()
