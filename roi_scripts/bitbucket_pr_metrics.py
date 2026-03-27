@@ -102,9 +102,10 @@ def resolve_credentials() -> Tuple[str, str, str]:
 # CONFIG VALIDATION AND PROMPTS
 # ============================================================================
 
-def validate_config() -> Tuple[bool, List[str], Dict[str, Any]]:
-    """Validate configuration and return (is_valid, errors, config_dict)"""
+def validate_config() -> Tuple[bool, List[str], List[str], Dict[str, Any]]:
+    """Validate configuration and return (is_valid, errors, warnings, config_dict)"""
     errors = []
+    warnings = []
     config = {
         'bitbucket_username': BITBUCKET_USERNAME,
         'bitbucket_app_password': BITBUCKET_APP_PASSWORD,
@@ -121,9 +122,15 @@ def validate_config() -> Tuple[bool, List[str], Dict[str, Any]]:
     if BITBUCKET_API_TOKEN:
         if not BITBUCKET_EMAIL:
             errors.append("BITBUCKET_EMAIL is required when BITBUCKET_API_TOKEN is set")
+        if BITBUCKET_APP_PASSWORD:
+            warnings.append("Both BITBUCKET_API_TOKEN and BITBUCKET_APP_PASSWORD are set. Using API Token.")
     elif BITBUCKET_APP_PASSWORD:
         if not BITBUCKET_USERNAME:
             errors.append("BITBUCKET_USERNAME is required when using BITBUCKET_APP_PASSWORD")
+        warnings.append(
+            "Using BITBUCKET_APP_PASSWORD which is deprecated and will stop working June 9, 2026. "
+            "Switch to BITBUCKET_API_TOKEN + BITBUCKET_EMAIL."
+        )
     else:
         errors.append(
             "No Bitbucket credentials found. Set BITBUCKET_API_TOKEN + BITBUCKET_EMAIL "
@@ -154,7 +161,7 @@ def validate_config() -> Tuple[bool, List[str], Dict[str, Any]]:
             except ValueError:
                 errors.append("AUTOMATED_DATE must be in ISO 8601 format: 'YYYY-MM-DDTHH:MM:SSZ'")
 
-    return len(errors) == 0, errors, config
+    return len(errors) == 0, errors, warnings, config
 
 
 def prompt_for_config() -> Optional[Dict[str, Any]]:
@@ -820,7 +827,7 @@ def main():
     global BITBUCKET_API_TOKEN, BITBUCKET_EMAIL
 
     # Validate configuration
-    is_valid, errors, config = validate_config()
+    is_valid, errors, warnings, config = validate_config()
 
     if not is_valid:
         print("Configuration validation failed:")
@@ -845,7 +852,7 @@ def main():
             BRANCH = new_config['branch']
             API_BASE_URL = new_config['api_base_url']
 
-            is_valid, errors, config = validate_config()
+            is_valid, errors, warnings, config = validate_config()
             if not is_valid:
                 print("Configuration is still invalid after interactive setup:")
                 for error in errors:
@@ -853,6 +860,12 @@ def main():
                 return
         else:
             return
+
+    # Display warnings
+    if warnings:
+        print("\nConfiguration warnings:")
+        for warning in warnings:
+            print(f"  WARNING: {warning}")
 
     # Resolve and display authentication method
     auth_user, auth_pass, auth_label = resolve_credentials()
