@@ -24,7 +24,7 @@
     "chartjs-node-canvas": "^5.0.0",
     "dotenv": "^16.4.5",
     "fs-extra": "^11.0.0",
-    "joi": "^17.0.0",
+    "joi": "^17.13.8",
     "simple-git": "^3.0.0",
     "web-tree-sitter": "^0.24.7"
   }
